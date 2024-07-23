@@ -1,0 +1,31 @@
+===== ARCH SIM =====
+Enter [r] to run or [s] to step through
+> 
+Address: 0x0
+Instruction: mov r0 3 
+Registers:
+ r0=3
+ r1=0
+ r2=0
+
+Address: 0x2
+Instruction: mov r1 5 
+Registers:
+ r0=3
+ r1=5
+ r2=0
+
+Address: 0x3
+Instruction: add r2 r0 r1 
+Registers:
+ r0=3
+ r1=5
+ r2=8
+
+Address: 0x4
+Instruction: sub r2 r2 1 
+Registers:
+ r0=3
+ r1=5
+ r2=7
+
