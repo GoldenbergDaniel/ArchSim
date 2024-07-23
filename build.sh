@@ -1,5 +1,7 @@
-NAME="sim"
-MODE=$1
+#!usr/bin/bash
 
 export ODIN_ROOT="odin"
+
+NAME="sim"
+
 odin build src -out:$NAME -o:none -use-separate-modules
