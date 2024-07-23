@@ -241,7 +241,7 @@ main :: proc()
         {
           buf: [8]byte
           buf_len, _ := os.read(os.stdin, buf[:])
-          if buf_len == 1 do break
+          if buf_len <= 2 do break
         }
       }
       else
