@@ -5,16 +5,9 @@ REGISTER_COUNT :: 3
 
 Simulator :: struct
 {
-  should_quit: bool,
   step_through: bool,
 
   registers: [REGISTER_COUNT]Number,
-}
-
-InstructionStore :: struct
-{
-  data: [][]Token,
-  num_lines: int,
 }
 
 OpcodeType :: enum
@@ -27,7 +20,7 @@ OpcodeType :: enum
   JMP,
 }
 
-OPCODES :: [OpcodeType]string{
+OPCODE_STRINGS :: [OpcodeType]string{
   .NIL = "",
   
   .MOV = "mov",
@@ -60,7 +53,7 @@ main :: proc()
     fmt.eprint("Error opening file.\n")
   }
 
-  buf: [512]byte
+  buf: [1024]byte
   size, _ := os.read(src_file, buf[:])
   src_data := buf[:size]
 
@@ -70,7 +63,7 @@ main :: proc()
   instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
 
   fmt.print("===== ARCH SIM =====\n")
-  fmt.print("Enter [r] to run or [s] to step through\n")
+  fmt.print("Enter [r] to run or [s] to step through.\n")
 
   // Select run option
   opt_loop: for true
@@ -78,27 +71,25 @@ main :: proc()
     buf: [8]byte
     fmt.print("> ")
     os.read(os.stdin, buf[:])
-    fmt.print("\n")
 
     opt := buf[0]
     switch opt
     {
       case 'r': simulator.step_through = false
       case 's': simulator.step_through = true
-      case 'q': simulator.should_quit = true
+      case 'q': return
       case: continue opt_loop
     }
-
+    
+    fmt.print("\n")
     break opt_loop
   }
-
-  if simulator.should_quit do return
 
   line_start: int
   for line_num := 0; true; line_num += 1
   {
     line_end, is_done := next_line(src_data, line_start)
-    instructions.data[line_num] = tokenize_line(src_data[line_start:line_end], perm_arena)
+    instructions.data[line_num] = tokenize_line(src_data[line_start:line_end])
     line_start = line_end + 1
 
     for &instruction, i in instructions.data[line_num]
@@ -109,12 +100,12 @@ main :: proc()
 
     if is_done
     {
-      instructions.num_lines = line_num + 1
+      instructions.line_count = line_num + 1
       break
     }
   }
 
-  for instruction_idx := 0; instruction_idx < instructions.num_lines; instruction_idx += 1
+  for instruction_idx := 0; instruction_idx < instructions.line_count; instruction_idx += 1
   {
     instruction := instructions.data[instruction_idx]
     
@@ -133,7 +124,7 @@ main :: proc()
     if len(instruction) > 0 && instruction[0].type == .OPCODE
     {
       error: bool
-      #partial switch instruction[0].opcode_type
+      switch instruction[0].opcode_type
       {
         case .MOV:
         {
@@ -216,6 +207,7 @@ main :: proc()
             instruction_idx = cast(int) dest.(Number) - 1
           }
         }
+        case .NIL: {}
       }
 
       if error
@@ -258,7 +250,7 @@ next_line :: proc(buf: []byte, start: int) -> (end: int, is_done: bool)
 
   for i in start..<length
   {
-    if buf[i] == '\n'
+    if buf[i] == '\n' || buf[i] == '\r'
     {
       end = i
       break
@@ -291,9 +283,15 @@ TokenType :: enum
 
 Instruction :: []Token
 
-tokenize_line :: proc(buf: []byte, arena: ^rt.Arena) -> Instruction
+InstructionStore :: struct
 {
-  tokens := make(Instruction, 10, arena.ally)
+  data: []Instruction,
+  line_count: int,
+}
+
+tokenize_line :: proc(buf: []byte) -> Instruction
+{
+  tokens := make(Instruction, 10, context.allocator)
   token_idx: int
 
   end_of_line := len(buf)
@@ -320,7 +318,7 @@ tokenize_line :: proc(buf: []byte, arena: ^rt.Arena) -> Instruction
     buf_str := string(buf[line_idx:i])
 
     // Tokenize opcode
-    for op_str, op_type in OPCODES
+    for op_str, op_type in OPCODE_STRINGS
     {
       if str_equals(buf_str, op_str)
       {
@@ -357,7 +355,7 @@ register_from_token :: proc(token: Token) -> Register
 {
   result: Register
 
-  switch string_from_token(token)
+  switch str_from_token(token)
   {
     case "r0": result = 0
     case "r1": result = 1
@@ -374,7 +372,7 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
 
   if token.type == .NUMBER
   {
-    opr = cast(Number) str_to_int(string_from_token(token))
+    opr = cast(Number) str_to_int(str_from_token(token))
   }
   else if token.type == .IDENTIFIER
   {
@@ -388,11 +386,6 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
   }
 
   return opr, err
-}
-
-string_from_token :: #force_inline proc(token: Token) -> string
-{
-  return cast(string) token.data
 }
 
 // @String ///////////////////////////////////////////////////////////////////////////////
@@ -448,16 +441,34 @@ str_to_int :: proc(str: string) -> int
 
   for i := len(str)-1; i >= 0; i -= 1
   {
-    result += int(str[i] - 48) * int(math.pow(10, f32(i)))
+    result += int(str[i] - 48) * int(pow_uint(10, uint(i)))
   }
 
   return result
 }
 
-// Imports ///////////////////////////////////////////////////////////////////////////////
+str_from_token :: #force_inline proc(token: Token) -> string
+{
+  return cast(string) token.data
+}
+
+// @Math /////////////////////////////////////////////////////////////////////////////////
+
+pow_uint :: proc(base, exp: uint) -> uint
+{
+  result: uint = 1
+  
+  for i: uint; i < exp; i += 1
+  {
+    result *= base
+  }
+
+  return result
+}
+
+// @Imports //////////////////////////////////////////////////////////////////////////////
 
 import "core:fmt"
-import "core:math"
 import "core:os"
 
 import rt "root"
