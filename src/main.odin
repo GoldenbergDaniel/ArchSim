@@ -42,15 +42,13 @@ NIL_REGISTER :: 255
 
 main :: proc()
 {
-  perm_arena := rt.create_arena(rt.MIB * 16)
-  context.allocator = perm_arena.ally
-  temp_arena := rt.create_arena(rt.MIB * 16)
-  context.temp_allocator = temp_arena.ally
+  fmt.print("===== ARCH SIM =====\n")
 
   src_file, err := os.open("data/main.asm")
   if err != 0
   {
     fmt.eprint("Error opening file.\n")
+    return
   }
 
   buf: [1024]byte
@@ -62,11 +60,9 @@ main :: proc()
   instructions: InstructionStore
   instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
 
-  fmt.print("===== ARCH SIM =====\n")
+  // Prompt execution option ----------------
   fmt.print("Enter [r] to run or [s] to step through.\n")
-
-  // Select run option
-  opt_loop: for true
+  for true
   {
     buf: [8]byte
     fmt.print("> ")
@@ -78,19 +74,23 @@ main :: proc()
       case 'r': simulator.step_through = false
       case 's': simulator.step_through = true
       case 'q': return
-      case: continue opt_loop
+      case: continue
     }
     
     fmt.print("\n")
-    break opt_loop
+    break
   }
 
+  // Tokenize lines ----------------
   line_start: int
-  for line_num := 0; true; line_num += 1
+  for line_num := 0; true;
   {
     line_end, is_done := next_line(src_data, line_start)
-    instructions.data[line_num] = tokenize_line(src_data[line_start:line_end])
+    line := tokenize_line(src_data[line_start:line_end])
     line_start = line_end + 1
+    if len(line) == 0 do continue
+    
+    instructions.data[line_num] = line
 
     for &instruction, i in instructions.data[line_num]
     {
@@ -103,13 +103,15 @@ main :: proc()
       instructions.line_count = line_num + 1
       break
     }
+    
+    line_num += 1
   }
 
+  // Execute instruction ----------------
   for instruction_idx := 0; instruction_idx < instructions.line_count; instruction_idx += 1
   {
     instruction := instructions.data[instruction_idx]
-    
-    // Execute instruction
+
     operands: [3]Token
     operand_idx: int
     for token in instruction
@@ -121,125 +123,122 @@ main :: proc()
       }
     }
 
-    if len(instruction) > 0 && instruction[0].type == .OPCODE
+    error: bool
+    switch instruction[0].opcode_type
     {
-      error: bool
-      switch instruction[0].opcode_type
+      case .MOV:
       {
-        case .MOV:
+        dest_reg, err0 := operand_from_operands(operands[:], 0)
+        op1_reg, err1  := operand_from_operands(operands[:], 1)
+        
+        error = err0 || err1
+        if !error
         {
-          dest_reg, err0 := operand_from_operands(operands[:], 0)
-          op1_reg, err1  := operand_from_operands(operands[:], 1)
-          
-          error = err0 || err1
-          if !error
+          val: Number
+
+          switch v in op1_reg
           {
-            val: Number
-
-            switch v in op1_reg
-            {
-              case Number:   val = v
-              case Register: val = simulator.registers[v]
-            }
-
-            simulator.registers[dest_reg.(Register)] = val
+            case Number:   val = v
+            case Register: val = simulator.registers[v]
           }
-        }
-        case .ADD:
-        {
-          dest_reg, err0 := operand_from_operands(operands[:], 0)
-          op1_reg, err1  := operand_from_operands(operands[:], 1)
-          op2_reg, err2  := operand_from_operands(operands[:], 2)
 
-          error = err0 || err1 || err2
-          if !error
+          simulator.registers[dest_reg.(Register)] = val
+        }
+      }
+      case .ADD:
+      {
+        dest_reg, err0 := operand_from_operands(operands[:], 0)
+        op1_reg, err1  := operand_from_operands(operands[:], 1)
+        op2_reg, err2  := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          val1, val2: Number
+
+          switch v in op1_reg
           {
-            val1, val2: Number
-
-            switch v in op1_reg
-            {
-              case Number:   val1 = v
-              case Register: val1 = simulator.registers[v]
-            }
-
-            switch v in op2_reg
-            {
-              case Number:   val2 = v
-              case Register: val2 = simulator.registers[v]
-            }
-
-            simulator.registers[dest_reg.(Register)] = val1 + val2
+            case Number:   val1 = v
+            case Register: val1 = simulator.registers[v]
           }
-        }
-        case .SUB:
-        {
-          dest_reg, err0 := operand_from_operands(operands[:], 0)
-          op1_reg, err1  := operand_from_operands(operands[:], 1)
-          op2_reg, err2  := operand_from_operands(operands[:], 2)
 
-          error = err0 || err1 || err2
-          if !error
+          switch v in op2_reg
           {
-            val1, val2: Number
-
-            switch t in op1_reg
-            {
-              case Number:   val1 = op1_reg.(Number)
-              case Register: val1 = simulator.registers[op1_reg.(Register)]
-            }
-
-            switch t in op2_reg
-            {
-              case Number:   val2 = op2_reg.(Number)
-              case Register: val2 = simulator.registers[op2_reg.(Register)]
-            }
-
-            simulator.registers[dest_reg.(Register)] = val1 - val2
+            case Number:   val2 = v
+            case Register: val2 = simulator.registers[v]
           }
-        }
-        case .JMP:
-        {
-          dest, err0 := operand_from_operands(operands[:], 0)
 
-          error = err0
-          if !error
+          simulator.registers[dest_reg.(Register)] = val1 + val2
+        }
+      }
+      case .SUB:
+      {
+        dest_reg, err0 := operand_from_operands(operands[:], 0)
+        op1_reg, err1  := operand_from_operands(operands[:], 1)
+        op2_reg, err2  := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          val1, val2: Number
+
+          switch t in op1_reg
           {
-            instruction_idx = cast(int) dest.(Number) - 1
+            case Number:   val1 = op1_reg.(Number)
+            case Register: val1 = simulator.registers[op1_reg.(Register)]
           }
+
+          switch t in op2_reg
+          {
+            case Number:   val2 = op2_reg.(Number)
+            case Register: val2 = simulator.registers[op2_reg.(Register)]
+          }
+
+          simulator.registers[dest_reg.(Register)] = val1 - val2
         }
-        case .NIL: {}
       }
-
-      if error
+      case .JMP:
       {
-        fmt.eprintf("Error executing instruction on line %i.\n", instruction[0].line+1)
-        assert(false)
-      }
+        dest, err0 := operand_from_operands(operands[:], 0)
 
-      fmt.printf("Address: %#X\n", instruction_idx)
-
-      fmt.print("Instruction: ")
-      for tok in instruction do fmt.printf("%s ", string(tok.data))
-
-      fmt.print("\nRegisters:\n")
-      for reg in 0..<REGISTER_COUNT
-      {
-        fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
-      }
-
-      if simulator.step_through
-      {
-        for
+        error = err0
+        if !error
         {
-          buf: [8]byte
-          buf_len, _ := os.read(os.stdin, buf[:])
-          if buf_len <= 2 do break
+          instruction_idx = cast(int) dest.(Number) - 1
         }
       }
-      else
+      case .NIL: {}
+    }
+
+    if error
+    {
+      fmt.eprintf("Error executing instruction on line %i.\n", instruction[0].line+1)
+      assert(false)
+    }
+
+    fmt.printf("Address: %#X\n", instruction_idx)
+
+    fmt.print("Instruction: ")
+    for tok in instruction do fmt.printf("%s ", string(tok.data))
+
+    fmt.print("\nRegisters:\n")
+    for reg in 0..<REGISTER_COUNT
+    {
+      fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
+    }
+
+    if simulator.step_through
+    {
+      for
       {
-        fmt.print("\n")
+        buf: [8]byte
+        buf_len, _ := os.read(os.stdin, buf[:])
+        if buf_len <= 2 do break
       }
+    }
+    else
+    {
+      fmt.print("\n")
     }
   }
 }
@@ -470,5 +469,3 @@ pow_uint :: proc(base, exp: uint) -> uint
 
 import "core:fmt"
 import "core:os"
-
-import rt "root"
