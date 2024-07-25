@@ -1,5 +1,7 @@
 TODO
   [_] error handling
   [_] assembler
-  [_] memory (LD, ST)
+  [_] memory (ld, st)
+  [_] conditional branching (cmp)
   [_] breakpoints
+  [_] storage

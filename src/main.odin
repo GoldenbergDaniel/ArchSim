@@ -5,6 +5,7 @@ REGISTER_COUNT :: 3
 
 Simulator :: struct
 {
+  current_command: Command,
   step_through: bool,
 
   registers: [REGISTER_COUNT]Number,
@@ -40,9 +41,13 @@ Operand :: union
 
 NIL_REGISTER :: 255
 
+@(private="file")
+command_table: map[string]CommandType
+
 main :: proc()
 {
   fmt.print("===== ARCH SIM =====\n")
+  fmt.print("Enter [r] to run or [s] to step through.\n")
 
   src_file, err := os.open("data/main.asm")
   if err != 0
@@ -55,26 +60,41 @@ main :: proc()
   size, _ := os.read(src_file, buf[:])
   src_data := buf[:size]
 
+  // Command table ----------------
+  {
+    command_table["q"]    = .QUIT
+    command_table["quit"] = .QUIT
+    command_table["r"]    = .RUN
+    command_table["run"]  = .RUN
+    command_table[""]     = .STEP
+    command_table["s"]    = .STEP
+    command_table["step"] = .STEP
+  }
+
   simulator: Simulator
 
   instructions: InstructionStore
   instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
 
   // Prompt execution option ----------------
-  fmt.print("Enter [r] to run or [s] to step through.\n")
   for true
   {
     buf: [8]byte
     fmt.print("> ")
-    os.read(os.stdin, buf[:])
+    input_len, _ := os.read(os.stdin, buf[:])
+    cmd_str := str_strip_crlf(string(buf[:input_len]))
+    command := command_from_string(cmd_str)
 
-    opt := buf[0]
-    switch opt
+    #partial switch command.type
     {
-      case 'r': simulator.step_through = false
-      case 's': simulator.step_through = true
-      case 'q': return
-      case: continue
+      case .QUIT: return
+      case .RUN:  simulator.step_through = false
+      case .STEP: simulator.step_through = true
+      case:
+      {
+        fmt.print("Please enter a valid command.\n")
+        continue
+      }
     }
     
     fmt.print("\n")
@@ -174,8 +194,8 @@ main :: proc()
       case .SUB:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg, err1  := operand_from_operands(operands[:], 1)
-        op2_reg, err2  := operand_from_operands(operands[:], 2)
+        op1_reg,  err1 := operand_from_operands(operands[:], 1)
+        op2_reg,  err2 := operand_from_operands(operands[:], 2)
 
         error = err0 || err1 || err2
         if !error
@@ -219,7 +239,7 @@ main :: proc()
     fmt.printf("Address: %#X\n", instruction_idx)
 
     fmt.print("Instruction: ")
-    for tok in instruction do fmt.printf("%s ", string(tok.data))
+    for tok in instruction do fmt.print(string(tok.data), "")
 
     fmt.print("\nRegisters:\n")
     for reg in 0..<REGISTER_COUNT
@@ -227,13 +247,31 @@ main :: proc()
       fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
     }
 
-    if simulator.step_through
+    if simulator.step_through && instruction_idx < instructions.line_count - 1
     {
-      for
+      // Prompt execution option ----------------
+      for true
       {
         buf: [8]byte
-        buf_len, _ := os.read(os.stdin, buf[:])
-        if buf_len <= 2 do break
+        fmt.print("\n> ")
+        input_len, _ := os.read(os.stdin, buf[:])
+        cmd_str := str_strip_crlf(string(buf[:input_len]))
+        command := command_from_string(cmd_str)
+
+        #partial switch command.type
+        {
+          case .QUIT: return
+          case .RUN:  simulator.step_through = false
+          case .STEP: simulator.step_through = true
+          case:
+          {
+            fmt.print("Please enter a valid command.\n")
+            continue
+          }
+        }
+        
+        fmt.print("\n")
+        break
       }
     }
     else
@@ -260,6 +298,32 @@ next_line :: proc(buf: []byte, start: int) -> (end: int, is_done: bool)
 
   return end, is_done
 }
+
+Command :: struct
+{
+  type: CommandType,
+  run_to: int,
+}
+
+CommandType :: enum
+{
+  NONE,
+
+  QUIT,
+  RUN,
+  RUN_TO,
+  STEP,
+}
+
+command_from_string :: proc(str: string) -> Command
+{
+  result: Command
+  result.type = command_table[str]
+  
+  return result
+}
+
+// @Token ////////////////////////////////////////////////////////////////////////////////
 
 Token :: struct
 {
@@ -438,9 +502,31 @@ str_to_int :: proc(str: string) -> int
 
   result: int
 
-  for i := len(str)-1; i >= 0; i -= 1
+  // for i := len(str)-1; i >= 0; i -= 1
+  // {
+  //   result += int(str[i] - 48) * int(pow_uint(10, uint(i)))
+  // }
+
+  #reverse for c, i in str
   {
-    result += int(str[i] - 48) * int(pow_uint(10, uint(i)))
+    result += int(c - 48) * int(pow_uint(10, uint(i)))
+  }
+
+  return result
+}
+
+str_strip_crlf :: proc(str: string) -> string
+{
+  result := str
+  str_len := len(str)
+
+  if str_len >= 2 && str[str_len-2] == '\r'
+  {
+    result = str[:len(str)-2]
+  }
+  else if str_len >= 1 && str[str_len-1] == '\n'
+  {
+    result = str[:len(str)-1]
   }
 
   return result

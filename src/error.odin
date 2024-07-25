@@ -2,6 +2,7 @@ package main
 
 Error :: union
 {
+  bool,
   SyntaxError,
   TypeError,
   OpcodeError,
