@@ -1,7 +1,8 @@
 package main
 
-MAX_INSTRUCTIONS :: 16
-REGISTER_COUNT :: 3
+MAX_SRC_BUF_BYTES :: 1024
+MAX_INSTRUCTIONS  :: 16
+REGISTER_COUNT    :: 3
 
 Simulator :: struct
 {
@@ -9,6 +10,11 @@ Simulator :: struct
   step_through: bool,
 
   registers: [REGISTER_COUNT]Number,
+  cmp_flag: struct
+  {
+    equals: bool,
+    greater: bool,
+  },
 }
 
 OpcodeType :: enum
@@ -16,18 +22,36 @@ OpcodeType :: enum
   NIL,
 
   MOV,
+
   ADD,
   SUB,
+  SHL,
+  SHR,
+
+  CMP,
   JMP,
+  JEQ,
+  JNE,
+  JLT,
+  JGT,
 }
 
 OPCODE_STRINGS :: [OpcodeType]string{
   .NIL = "",
   
   .MOV = "mov",
+
   .ADD = "add",
   .SUB = "sub",
+  .SHL = "shl",
+  .SHR = "shr",
+
+  .CMP = "cmp",
   .JMP = "jmp",
+  .JEQ = "jeq",
+  .JNE = "jne",
+  .JLT = "jlt",
+  .JGT = "jgt",
 }
 
 Number :: distinct u8
@@ -36,7 +60,7 @@ Register :: distinct u8
 Operand :: union
 {
   Number,
-  Register
+  Register,
 }
 
 NIL_REGISTER :: 255
@@ -47,7 +71,8 @@ command_table: map[string]CommandType
 main :: proc()
 {
   fmt.print("======= ARCH SIM =======\n")
-  fmt.print("Enter [r] to run entire program or [s] to step to next instruction.\n")
+  fmt.print("Type [r] to run entire program or [s] to step to next instruction.\n")
+  fmt.print("Type [h] for a list of commands.\n")
 
   src_file, err := os.open("data/main.asm")
   if err != 0
@@ -56,14 +81,16 @@ main :: proc()
     return
   }
 
-  buf: [1024]byte
+  buf: [MAX_SRC_BUF_BYTES]byte
   size, _ := os.read(src_file, buf[:])
   src_data := buf[:size]
 
-  // Command table ----------------
+  // Build command table ----------------
   {
     command_table["q"]    = .QUIT
     command_table["quit"] = .QUIT
+    command_table["h"]    = .HELP
+    command_table["help"] = .HELP
     command_table["r"]    = .RUN
     command_table["run"]  = .RUN
     command_table[""]     = .STEP
@@ -217,12 +244,104 @@ main :: proc()
           simulator.registers[dest_reg.(Register)] = val1 - val2
         }
       }
-      case .JMP:
+      case .SHL:
+      {
+        dest_reg, err0 := operand_from_operands(operands[:], 0)
+        op1_reg,  err1 := operand_from_operands(operands[:], 1)
+        op2_reg,  err2 := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          val1, val2: Number
+
+          switch t in op1_reg
+          {
+            case Number:   val1 = op1_reg.(Number)
+            case Register: val1 = simulator.registers[op1_reg.(Register)]
+          }
+
+          switch t in op2_reg
+          {
+            case Number:   val2 = op2_reg.(Number)
+            case Register: val2 = simulator.registers[op2_reg.(Register)]
+          }
+
+          simulator.registers[dest_reg.(Register)] = val1 << val2
+        }
+      }
+      case .SHR:
+      {
+        dest_reg, err0 := operand_from_operands(operands[:], 0)
+        op1_reg,  err1 := operand_from_operands(operands[:], 1)
+        op2_reg,  err2 := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          val1, val2: Number
+
+          switch t in op1_reg
+          {
+            case Number:   val1 = op1_reg.(Number)
+            case Register: val1 = simulator.registers[op1_reg.(Register)]
+          }
+
+          switch t in op2_reg
+          {
+            case Number:   val2 = op2_reg.(Number)
+            case Register: val2 = simulator.registers[op2_reg.(Register)]
+          }
+
+          simulator.registers[dest_reg.(Register)] = val1 >> val2
+        }
+      }
+      case .CMP:
+      {
+        op1_reg, err0 := operand_from_operands(operands[:], 0)
+        op2_reg, err1 := operand_from_operands(operands[:], 1)
+
+        error = err0 || err1
+        if !error
+        {
+          val1, val2: Number
+
+          switch v in op1_reg
+          {
+            case Number:   val1 = v
+            case Register: val1 = simulator.registers[v]
+          }
+
+          switch v in op2_reg
+          {
+            case Number:   val2 = v
+            case Register: val2 = simulator.registers[v]
+          }
+
+          simulator.cmp_flag.equals = val1 == val2
+          simulator.cmp_flag.greater = val1 > val2
+        }
+      }
+      case .JMP: fallthrough
+      case .JEQ: fallthrough
+      case .JNE: fallthrough
+      case .JLT: fallthrough
+      case .JGT:
       {
         dest, err0 := operand_from_operands(operands[:], 0)
 
+        should_jump := false
+        #partial switch instruction[0].opcode_type
+        {
+          case .JMP: should_jump = true
+          case .JEQ: should_jump = simulator.cmp_flag.equals
+          case .JNE: should_jump = !simulator.cmp_flag.equals
+          case .JLT: should_jump = !simulator.cmp_flag.greater
+          case .JGT: should_jump = simulator.cmp_flag.greater
+        }
+
         error = err0
-        if !error
+        if !error && should_jump
         {
           instruction_idx = cast(int) dest.(Number) - 1
         }
@@ -232,11 +351,15 @@ main :: proc()
 
     if error
     {
+      set_color(.RED)
       fmt.eprintf("Error executing instruction on line %i.\n", instruction[0].line+1)
+      set_color(.WHITE)
       assert(false)
     }
 
+    set_color(.GREEN)
     fmt.printf("Address: %#X\n", instruction_idx)
+    set_color(.WHITE)
 
     fmt.print("Instruction: ")
     for tok in instruction do fmt.print(string(tok.data), "")
@@ -310,6 +433,7 @@ CommandType :: enum
   NONE,
 
   QUIT,
+  HELP,
   RUN,
   RUN_TO,
   STEP,
@@ -451,6 +575,33 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
   return opr, err
 }
 
+// @Terminal /////////////////////////////////////////////////////////////////////////////
+
+ColorKind :: enum
+{
+  BLACK,
+  BLUE,
+  GRAY,
+  GREEN,
+  RED,
+  WHITE,
+  YELLOW,
+}
+
+set_color :: proc(color: ColorKind)
+{
+  switch color
+  {
+    case .BLACK:  fmt.print("\u001b[38;5;16m")
+    case .BLUE:   fmt.print("\u001b[38;5;4m")
+    case .GRAY:   fmt.print("\u001b[38;5;7m")
+    case .GREEN:  fmt.print("\u001b[38;5;2m")
+    case .RED:    fmt.print("\u001b[38;5;1m")
+    case .WHITE:  fmt.print("\u001b[38;5;15m")
+    case .YELLOW: fmt.print("\u001b[38;5;3m")
+  }
+}
+
 // @String ///////////////////////////////////////////////////////////////////////////////
 
 str_equals :: proc(str1: string, str2: string) -> bool
@@ -486,7 +637,7 @@ str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 
 str_is_number :: proc(str: string) -> bool
 {
-  if str[0] == '0' do return false
+  if len(str) > 1 && str[0] == '0' do return false
 
   for i in 0..<len(str)
   {

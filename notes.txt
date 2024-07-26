@@ -1,7 +1,9 @@
 TODO
+  [_] colored output
+  [_] preprocessor (labels, variables, origin)
   [_] error handling
-  [_] assembler
+  [X] conditional branching (cmp)
   [_] memory (ld, st)
-  [_] conditional branching (cmp)
   [_] breakpoints
   [_] storage
+  [_] assembler
