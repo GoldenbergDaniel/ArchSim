@@ -1,5 +1,8 @@
 *.DS_STORE
 out.txt
 
+odin/LLVM-C.dll
+odin/libs/libLLVM.dylib
+
 sim
 sim.exe
