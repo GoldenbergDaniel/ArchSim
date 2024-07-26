@@ -72,7 +72,7 @@ main :: proc()
 {
   fmt.print("======= ARCH SIM =======\n")
   fmt.print("Type [r] to run entire program or [s] to step to next instruction.\n")
-  fmt.print("Type [h] for a list of commands.\n")
+  fmt.print("Type [h] for a list of commands.\n\n")
 
   src_file, err := os.open("data/main.asm")
   if err != 0
@@ -115,11 +115,14 @@ main :: proc()
     #partial switch command.type
     {
       case .QUIT: return
+      case .HELP: print_commands_list(); continue
       case .RUN:  simulator.step_through = false
       case .STEP: simulator.step_through = true
       case:
       {
-        fmt.print("Please enter a valid command.\n")
+        set_color(.RED)
+        fmt.print("\nPlease enter a valid command.\n\n")
+        set_color(.WHITE)
         continue
       }
     }
@@ -384,11 +387,14 @@ main :: proc()
         #partial switch command.type
         {
           case .QUIT: return
+          case .HELP: print_commands_list(); continue
           case .RUN:  simulator.step_through = false
           case .STEP: simulator.step_through = true
           case:
           {
-            fmt.print("Please enter a valid command.\n")
+            set_color(.RED)
+            fmt.print("\nPlease enter a valid command.\n\n")
+            set_color(.WHITE)
             continue
           }
         }
@@ -600,6 +606,16 @@ set_color :: proc(color: ColorKind)
     case .WHITE:  fmt.print("\u001b[38;5;15m")
     case .YELLOW: fmt.print("\u001b[38;5;3m")
   }
+}
+
+print_commands_list :: proc()
+{
+  fmt.print("\n")
+  fmt.print("q, quit   :   quit simulator\n")
+  fmt.print("h, help   :   print list of commands\n")
+  fmt.print("r, run    :   run program to breakpoint\n")
+  fmt.print("s, step   :   step to next line\n")
+  fmt.print("\n")
 }
 
 // @String ///////////////////////////////////////////////////////////////////////////////
