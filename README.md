@@ -7,3 +7,8 @@ Natively compiles on Windows and macOS. Odin compiler is packaged in the repo. F
 ./build.sh || build.bat
 ./sim || sim.exe
 ```
+
+On macOS, you may need to run the following command to give the Odin compiler permission to execute.
+```bash
+chmod +x "odin/odin"
+```
