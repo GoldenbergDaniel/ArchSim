@@ -46,8 +46,8 @@ command_table: map[string]CommandType
 
 main :: proc()
 {
-  fmt.print("===== ARCH SIM =====\n")
-  fmt.print("Enter [r] to run or [s] to step through.\n")
+  fmt.print("======= ARCH SIM =======\n")
+  fmt.print("Enter [r] to run entire program or [s] to step to next instruction.\n")
 
   src_file, err := os.open("data/main.asm")
   if err != 0
