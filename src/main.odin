@@ -195,84 +195,9 @@ main :: proc()
           simulator.registers[dest_reg.(Register)] = val
         }
       }
-      case .ADD:
-      {
-        dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg, err1  := operand_from_operands(operands[:], 1)
-        op2_reg, err2  := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
-        {
-          val1, val2: Number
-
-          switch v in op1_reg
-          {
-            case Number:   val1 = v
-            case Register: val1 = simulator.registers[v]
-          }
-
-          switch v in op2_reg
-          {
-            case Number:   val2 = v
-            case Register: val2 = simulator.registers[v]
-          }
-
-          simulator.registers[dest_reg.(Register)] = val1 + val2
-        }
-      }
-      case .SUB:
-      {
-        dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg,  err1 := operand_from_operands(operands[:], 1)
-        op2_reg,  err2 := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
-        {
-          val1, val2: Number
-
-          switch t in op1_reg
-          {
-            case Number:   val1 = op1_reg.(Number)
-            case Register: val1 = simulator.registers[op1_reg.(Register)]
-          }
-
-          switch t in op2_reg
-          {
-            case Number:   val2 = op2_reg.(Number)
-            case Register: val2 = simulator.registers[op2_reg.(Register)]
-          }
-
-          simulator.registers[dest_reg.(Register)] = val1 - val2
-        }
-      }
-      case .SHL:
-      {
-        dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg,  err1 := operand_from_operands(operands[:], 1)
-        op2_reg,  err2 := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
-        {
-          val1, val2: Number
-
-          switch t in op1_reg
-          {
-            case Number:   val1 = op1_reg.(Number)
-            case Register: val1 = simulator.registers[op1_reg.(Register)]
-          }
-
-          switch t in op2_reg
-          {
-            case Number:   val2 = op2_reg.(Number)
-            case Register: val2 = simulator.registers[op2_reg.(Register)]
-          }
-
-          simulator.registers[dest_reg.(Register)] = val1 << val2
-        }
-      }
+      case .ADD: fallthrough
+      case .SUB: fallthrough
+      case .SHL: fallthrough
       case .SHR:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
@@ -295,8 +220,17 @@ main :: proc()
             case Number:   val2 = op2_reg.(Number)
             case Register: val2 = simulator.registers[op2_reg.(Register)]
           }
+          
+          result: Number
+          #partial switch instruction[0].opcode_type
+          {
+            case .ADD: result = val1 + val2
+            case .SUB: result = val1 - val2
+            case .SHL: result = val1 << val2
+            case .SHR: result = val1 >> val2
+          }
 
-          simulator.registers[dest_reg.(Register)] = val1 >> val2
+          simulator.registers[dest_reg.(Register)] = result
         }
       }
       case .CMP:
@@ -360,14 +294,20 @@ main :: proc()
       assert(false)
     }
 
+    set_color(.GRAY )
+    fmt.print("Address: ")
     set_color(.GREEN)
-    fmt.printf("Address: %#X\n", instruction_idx)
+    fmt.printf("%#X\n", instruction_idx)
     set_color(.WHITE)
 
+    set_color(.GRAY)
     fmt.print("Instruction: ")
+    set_color(.WHITE)
     for tok in instruction do fmt.print(string(tok.data), "")
 
+    set_color(.GRAY)
     fmt.print("\nRegisters:\n")
+    set_color(.WHITE)
     for reg in 0..<REGISTER_COUNT
     {
       fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
@@ -594,9 +534,9 @@ ColorKind :: enum
   YELLOW,
 }
 
-set_color :: proc(color: ColorKind)
+set_color :: proc(kind: ColorKind)
 {
-  switch color
+  switch kind
   {
     case .BLACK:  fmt.print("\u001b[38;5;16m")
     case .BLUE:   fmt.print("\u001b[38;5;4m")
