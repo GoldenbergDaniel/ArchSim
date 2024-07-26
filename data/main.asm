@@ -1,4 +1,4 @@
-mov r0, 3
+mov r0, 33
 // jmp 5
 mov r1, 5
 add r2, r0, r1

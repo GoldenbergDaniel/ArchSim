@@ -502,14 +502,9 @@ str_to_int :: proc(str: string) -> int
 
   result: int
 
-  // for i := len(str)-1; i >= 0; i -= 1
-  // {
-  //   result += int(str[i] - 48) * int(pow_uint(10, uint(i)))
-  // }
-
-  #reverse for c, i in str
+  for i := len(str)-1; i >= 0; i -= 1
   {
-    result += int(c - 48) * int(pow_uint(10, uint(i)))
+    result += int(str[len(str)-1-i] - 48) * int(pow_uint(10, uint(i)))
   }
 
   return result
