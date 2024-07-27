@@ -71,13 +71,20 @@ command_table: map[string]CommandType
 main :: proc()
 {
   fmt.print("======= ARCH SIM =======\n")
-  fmt.print("Type [r] to run entire program or [s] to step to next instruction.\n")
+  fmt.print("Type [r] to run program or [s] to step next instruction.\n")
   fmt.print("Type [h] for a list of commands.\n\n")
 
-  src_file, err := os.open("data/main.asm")
+  src_file_path := "res/main.asm"
+  if len(os.args) > 1
+  {
+    src_file_path = os.args[1]
+  }
+
+  src_file, err := os.open(src_file_path)
   if err != 0
   {
-    fmt.eprint("Error opening file.\n")
+    print_color(.RED)
+    fmt.eprintf("Error opening file \"%s\"\n", src_file_path)
     return
   }
 
@@ -120,9 +127,9 @@ main :: proc()
       case .STEP: simulator.step_through = true
       case:
       {
-        set_color(.RED)
-        fmt.print("\nPlease enter a valid command.\n\n")
-        set_color(.WHITE)
+        print_color(.RED)
+        fmt.print("\nEnter a valid command.\n\n")
+        print_color(.WHITE)
         continue
       }
     }
@@ -174,8 +181,11 @@ main :: proc()
     }
 
     error: bool
-    switch instruction[0].opcode_type
+
+    opcode_token := instruction[0]
+    switch opcode_token.opcode_type
     {
+      case .NIL: {}
       case .MOV:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
@@ -266,9 +276,10 @@ main :: proc()
       case .JGT:
       {
         dest, err0 := operand_from_operands(operands[:], 0)
+        error = err0
 
-        should_jump := false
-        #partial switch instruction[0].opcode_type
+        should_jump: bool
+        #partial switch opcode_token.opcode_type
         {
           case .JMP: should_jump = true
           case .JEQ: should_jump = simulator.cmp_flag.equals
@@ -277,37 +288,35 @@ main :: proc()
           case .JGT: should_jump = simulator.cmp_flag.greater
         }
 
-        error = err0
         if !error && should_jump
         {
           instruction_idx = cast(int) dest.(Number) - 1
         }
       }
-      case .NIL: {}
     }
 
     if error
     {
-      set_color(.RED)
+      print_color(.RED)
       fmt.eprintf("Error executing instruction on line %i.\n", instruction[0].line+1)
-      set_color(.WHITE)
+      print_color(.WHITE)
       assert(false)
     }
 
-    set_color(.GRAY )
+    print_color(.GRAY )
     fmt.print("Address: ")
-    set_color(.GREEN)
+    print_color(.GREEN)
     fmt.printf("%#X\n", instruction_idx)
-    set_color(.WHITE)
+    print_color(.WHITE)
 
-    set_color(.GRAY)
+    print_color(.GRAY)
     fmt.print("Instruction: ")
-    set_color(.WHITE)
+    print_color(.WHITE)
     for tok in instruction do fmt.print(string(tok.data), "")
 
-    set_color(.GRAY)
+    print_color(.GRAY)
     fmt.print("\nRegisters:\n")
-    set_color(.WHITE)
+    print_color(.WHITE)
     for reg in 0..<REGISTER_COUNT
     {
       fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
@@ -332,9 +341,9 @@ main :: proc()
           case .STEP: simulator.step_through = true
           case:
           {
-            set_color(.RED)
+            print_color(.RED)
             fmt.print("\nPlease enter a valid command.\n\n")
-            set_color(.WHITE)
+            print_color(.WHITE)
             continue
           }
         }
@@ -534,7 +543,7 @@ ColorKind :: enum
   YELLOW,
 }
 
-set_color :: proc(kind: ColorKind)
+print_color :: proc(kind: ColorKind)
 {
   switch kind
   {

@@ -1,5 +1,6 @@
 TODO
-  [_] colored output
+  [_] binary and hex parsing
+  [X] colored output
   [_] preprocessor (labels, variables, origin)
   [_] error handling
   [X] conditional branching (cmp)

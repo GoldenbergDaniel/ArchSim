@@ -3,6 +3,6 @@ setlocal
 
 set ODIN_ROOT=odin
 
-set NAME=sim
+set NAME=archsim
 
 odin\odin.exe build src -out:%NAME%.exe -o:none -use-separate-modules

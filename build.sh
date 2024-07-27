@@ -2,6 +2,6 @@
 
 export ODIN_ROOT="odin"
 
-NAME="sim"
+NAME="archsim"
 
 odin build src -out:$NAME -o:none -use-separate-modules

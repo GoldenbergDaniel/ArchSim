@@ -4,5 +4,5 @@ out.txt
 odin/LLVM-C.dll
 odin/libs/libLLVM.dylib
 
-sim
-sim.exe
+archsim
+archsim.exe
