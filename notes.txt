@@ -1,10 +1,10 @@
 TODO
-  [_] binary and hex parsing
+  [~] binary and hex parsing
   [X] colored output
   [_] preprocessor (labels, variables, origin)
-  [_] error handling
+  [~] error handling
   [X] conditional branching (cmp)
   [_] memory (ld, st)
   [_] breakpoints
-  [_] storage
+  [_] disk storage
   [_] assembler

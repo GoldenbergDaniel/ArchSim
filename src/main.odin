@@ -7,7 +7,7 @@ REGISTER_COUNT    :: 3
 Simulator :: struct
 {
   current_command: Command,
-  step_through: bool,
+  step_to_next: bool,
 
   registers: [REGISTER_COUNT]Number,
   cmp_flag: struct
@@ -29,7 +29,7 @@ OpcodeType :: enum
   SHR,
 
   CMP,
-  JMP,
+  J,
   JEQ,
   JNE,
   JLT,
@@ -47,7 +47,7 @@ OPCODE_STRINGS :: [OpcodeType]string{
   .SHR = "shr",
 
   .CMP = "cmp",
-  .JMP = "jmp",
+  .J   = "j",
   .JEQ = "jeq",
   .JNE = "jne",
   .JLT = "jlt",
@@ -123,8 +123,8 @@ main :: proc()
     {
       case .QUIT: return
       case .HELP: print_commands_list(); continue
-      case .RUN:  simulator.step_through = false
-      case .STEP: simulator.step_through = true
+      case .RUN:  simulator.step_to_next = false
+      case .STEP: simulator.step_to_next = true
       case:
       {
         print_color(.RED)
@@ -151,7 +151,7 @@ main :: proc()
 
     for &instruction, i in instructions.data[line_num]
     {
-      instruction.line = line_num
+      instruction.line = line_num+1
       instruction.column = i
     }
 
@@ -269,7 +269,7 @@ main :: proc()
           simulator.cmp_flag.greater = val1 > val2
         }
       }
-      case .JMP: fallthrough
+      case .J:   fallthrough
       case .JEQ: fallthrough
       case .JNE: fallthrough
       case .JLT: fallthrough
@@ -281,7 +281,7 @@ main :: proc()
         should_jump: bool
         #partial switch opcode_token.opcode_type
         {
-          case .JMP: should_jump = true
+          case .J:   should_jump = true
           case .JEQ: should_jump = simulator.cmp_flag.equals
           case .JNE: should_jump = !simulator.cmp_flag.equals
           case .JLT: should_jump = !simulator.cmp_flag.greater
@@ -298,31 +298,31 @@ main :: proc()
     if error
     {
       print_color(.RED)
-      fmt.eprintf("Error executing instruction on line %i.\n", instruction[0].line+1)
+      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", instruction[0].line)
       print_color(.WHITE)
-      assert(false)
+      return
     }
 
-    print_color(.GRAY )
+    print_color(.GRAY)
     fmt.print("Address: ")
-    print_color(.GREEN)
-    fmt.printf("%#X\n", instruction_idx)
     print_color(.WHITE)
+    fmt.printf("%#X\n", instruction_idx)
 
     print_color(.GRAY)
     fmt.print("Instruction: ")
     print_color(.WHITE)
     for tok in instruction do fmt.print(string(tok.data), "")
+    fmt.print("\n")
 
     print_color(.GRAY)
-    fmt.print("\nRegisters:\n")
+    fmt.print("Registers:\n")
     print_color(.WHITE)
     for reg in 0..<REGISTER_COUNT
     {
       fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
     }
 
-    if simulator.step_through && instruction_idx < instructions.line_count - 1
+    if simulator.step_to_next && instruction_idx < instructions.line_count - 1
     {
       // Prompt execution option ----------------
       for true
@@ -337,8 +337,8 @@ main :: proc()
         {
           case .QUIT: return
           case .HELP: print_commands_list(); continue
-          case .RUN:  simulator.step_through = false
-          case .STEP: simulator.step_through = true
+          case .RUN:  simulator.step_to_next = false
+          case .STEP: simulator.step_to_next = true
           case:
           {
             print_color(.RED)
@@ -439,14 +439,12 @@ tokenize_line :: proc(buf: []byte) -> Instruction
   end_of_line := len(buf)
 
   // Ignore comment
+  for i in 0..<end_of_line-1
   {
-    for i in 0..<end_of_line-1
+    if buf[i] == '/' && buf[i+1] == '/'
     {
-      if buf[i] == '/' && buf[i+1] == '/'
-      {
-        end_of_line = i
-        break
-      }
+      end_of_line = i
+      break
     }
   }
 
@@ -462,7 +460,8 @@ tokenize_line :: proc(buf: []byte) -> Instruction
     // Tokenize opcode
     for op_str, op_type in OPCODE_STRINGS
     {
-      if str_equals(buf_str, op_str)
+      buf_str_lower := str_to_lower(buf_str)
+      if buf_str_lower == op_str
       {
         tokens[token_idx] = Token{data=buf[line_idx:i], type=.OPCODE}
         tokens[token_idx].opcode_type = op_type
@@ -470,10 +469,12 @@ tokenize_line :: proc(buf: []byte) -> Instruction
         line_idx = i
         continue tokenizer_loop
       }
+
+      free_all(context.temp_allocator)
     }
 
     // Tokenize number
-    if str_is_number(buf_str)
+    if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
     {
       tokens[token_idx] = Token{data=buf[line_idx:i], type=.NUMBER}
       token_idx += 1
@@ -493,19 +494,20 @@ tokenize_line :: proc(buf: []byte) -> Instruction
   return tokens[:token_idx]
 }
 
-register_from_token :: proc(token: Token) -> Register
+register_from_token :: proc(token: Token) -> (Register, bool)
 {
   result: Register
+  error: bool
 
   switch str_from_token(token)
   {
     case "r0": result = 0
     case "r1": result = 1
     case "r2": result = 2
-    case: result = NIL_REGISTER
+    case: result = NIL_REGISTER; error = true
   }
 
-  return result
+  return result, error
 }
 
 operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err: bool)
@@ -518,9 +520,7 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
   }
   else if token.type == .IDENTIFIER
   {
-    reg := register_from_token(token)
-    if reg != NIL_REGISTER do opr = reg
-    else do err = true
+    opr, err = register_from_token(token)
   }
   else
   {
@@ -565,87 +565,6 @@ print_commands_list :: proc()
   fmt.print("r, run    :   run program to breakpoint\n")
   fmt.print("s, step   :   step to next line\n")
   fmt.print("\n")
-}
-
-// @String ///////////////////////////////////////////////////////////////////////////////
-
-str_equals :: proc(str1: string, str2: string) -> bool
-{
-  if len(str1) != len(str2) do return false
-
-  for i in 0..<len(str1)
-  {
-    if str1[i] != str2[i] do return false
-  }
-
-  return true
-}
-
-str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
-{
-  result := make([]byte, len(str), allocator)
-  
-  for i in 0..<len(str)
-  {
-    if str[i] >= 65 && str[i] <= 90
-    {
-      result[i] = str[i] + 32
-    }
-    else
-    {
-      result[i] = str[i]
-    }
-  }
-
-  return cast(string) result
-}
-
-str_is_number :: proc(str: string) -> bool
-{
-  if len(str) > 1 && str[0] == '0' do return false
-
-  for i in 0..<len(str)
-  {
-    if str[i] < '0' || str[i] > '9' do return false
-  }
-
-  return true
-}
-
-str_to_int :: proc(str: string) -> int
-{
-  assert(str_is_number(str))
-
-  result: int
-
-  for i := len(str)-1; i >= 0; i -= 1
-  {
-    result += int(str[len(str)-1-i] - 48) * int(pow_uint(10, uint(i)))
-  }
-
-  return result
-}
-
-str_strip_crlf :: proc(str: string) -> string
-{
-  result := str
-  str_len := len(str)
-
-  if str_len >= 2 && str[str_len-2] == '\r'
-  {
-    result = str[:len(str)-2]
-  }
-  else if str_len >= 1 && str[str_len-1] == '\n'
-  {
-    result = str[:len(str)-1]
-  }
-
-  return result
-}
-
-str_from_token :: #force_inline proc(token: Token) -> string
-{
-  return cast(string) token.data
 }
 
 // @Math /////////////////////////////////////////////////////////////////////////////////
