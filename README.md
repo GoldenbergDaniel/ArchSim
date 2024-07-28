@@ -8,8 +8,8 @@ In order to build from source, the only external dependency is MSVC (Visual Stud
 1. Unzip `odin/LLVM-C.dll.zip` on Windows or `odin/libs/libLLVM.dylib.zip` on macOS.
 2. Run the following commands
 ```bash
-./build.sh || build.bat
-./sim || sim.exe
+./build.sh r || build.bat r
+./archsim || archsim.exe
 ```
 
 **NOTE**: On macOS, you may need to run the following command before running `./build.sh` to give the Odin compiler permission to execute.
