@@ -11,6 +11,6 @@
   "checker_args": "-vet",
   "profiles":
   [
-    {"name": "main", "os": "darwin", "checker_path": ["src", "src/root"]}
+    {"name": "main", "os": "darwin", "checker_path": ["src", "src/root", "src/term"]}
   ]
 }

@@ -104,7 +104,7 @@ main :: proc()
   src_file, err := os.open(src_file_path)
   if err != 0
   {
-    print_color(.RED)
+    term.color(.RED)
     fmt.eprintf("Error opening file \"%s\"\n", src_file_path)
     return
   }
@@ -204,9 +204,9 @@ main :: proc()
       case .STEP: sim.step_to_next = true
       case:
       {
-        print_color(.RED)
+        term.color(.RED)
         fmt.print("\nEnter a valid command.\n\n")
-        print_color(.WHITE)
+        term.color(.WHITE)
         continue
       }
     }
@@ -365,26 +365,26 @@ main :: proc()
 
     if error
     {
-      print_color(.RED)
+      term.color(.RED)
       fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", instruction[0].line)
-      print_color(.WHITE)
+      term.color(.WHITE)
       return
     }
 
-    print_color(.GRAY)
+    term.color(.GRAY)
     fmt.print("Address: ")
-    print_color(.WHITE)
+    term.color(.WHITE)
     fmt.printf("%#X\n", instruction_idx)
 
-    print_color(.GRAY)
+    term.color(.GRAY)
     fmt.print("Instruction: ")
-    print_color(.WHITE)
+    term.color(.WHITE)
     for tok in instruction do fmt.print(tok.data, "")
     fmt.print("\n")
 
-    print_color(.GRAY)
+    term.color(.GRAY)
     fmt.print("Registers:\n")
-    print_color(.WHITE)
+    term.color(.WHITE)
     for reg in 0..<REGISTER_COUNT
     {
       fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
@@ -409,9 +409,9 @@ main :: proc()
           case .STEP: sim.step_to_next = true
           case:
           {
-            print_color(.RED)
+            term.color(.RED)
             fmt.print("\nPlease enter a valid command.\n\n")
-            print_color(.WHITE)
+            term.color(.WHITE)
             continue
           }
         }
@@ -671,6 +671,8 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
   return opr, err
 }
 
+// @Terminal /////////////////////////////////////////////////////////////////////////////
+
 print_tokens :: proc()
 {
   for i in 0..<sim.instructions.line_count
@@ -684,33 +686,6 @@ print_tokens :: proc()
   }
 
   fmt.println("\n")
-}
-
-// @Terminal /////////////////////////////////////////////////////////////////////////////
-
-ColorKind :: enum
-{
-  BLACK,
-  BLUE,
-  GRAY,
-  GREEN,
-  RED,
-  WHITE,
-  YELLOW,
-}
-
-print_color :: proc(kind: ColorKind)
-{
-  switch kind
-  {
-    case .BLACK:  fmt.print("\u001b[38;5;16m")
-    case .BLUE:   fmt.print("\u001b[38;5;4m")
-    case .GRAY:   fmt.print("\u001b[38;5;7m")
-    case .GREEN:  fmt.print("\u001b[38;5;2m")
-    case .RED:    fmt.print("\u001b[38;5;1m")
-    case .WHITE:  fmt.print("\u001b[38;5;15m")
-    case .YELLOW: fmt.print("\u001b[38;5;3m")
-  }
 }
 
 print_commands_list :: proc()
@@ -743,3 +718,4 @@ import "core:fmt"
 import "core:os"
 
 import rt "root"
+import "term"
