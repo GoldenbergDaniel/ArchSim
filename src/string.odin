@@ -22,7 +22,7 @@ str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 str_is_dec :: proc(str: string) -> bool
 {
   if len(str) == 0 do return false
-  if len(str) == 1 && str[0] == '0' do return false
+  if len(str) > 1 && str[0] == '0' do return false
 
   for i in 0..<len(str)
   {
@@ -100,7 +100,7 @@ str_to_int :: proc(str: string) -> int
     case 16:
     {
       @(static)
-      hex_table: [127]int = {
+      hex_table: [128]u8 = {
         '0' = 0,  '1' = 1,  '2' = 2,  '3' = 3,  '4' = 4,  '5' = 5,  '6' = 6,  '7' = 7,
         '8' = 8,  '9' = 9,  'a' = 10, 'b' = 11, 'c' = 12, 'd' = 13, 'e' = 14, 'f' = 15,
         'A' = 10, 'B' = 11, 'C' = 12, 'D' = 13, 'E' = 14, 'F' = 15,
@@ -131,9 +131,4 @@ str_strip_crlf :: proc(str: string) -> string
   }
 
   return result
-}
-
-str_from_token :: #force_inline proc(token: Token) -> string
-{
-  return cast(string) token.data
 }

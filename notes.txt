@@ -1,7 +1,7 @@
 TODO
-  [~] binary and hex parsing
+  [X] binary and hex parsing
   [X] colored output
-  [_] preprocessor (labels, variables, origin)
+  [~] preprocessor (labels, variables, origin)
   [~] error handling
   [X] conditional branching (cmp)
   [_] memory (ld, st)

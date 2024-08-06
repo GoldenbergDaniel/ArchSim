@@ -1,10 +1,6 @@
-mov r0, 8
-shr r1, r0, 1
-shl r2, r0, 1
-cmp r1, r2
-jlt 0x6
-jgt 0x8
-mov r0, 1
-j   0x9
-mov r0, 2
-mov r0, r0
+$define VAL_1 8
+$define VAL_2 16
+
+$section .text
+mov r0, VAL_1
+mov r1, VAL_2

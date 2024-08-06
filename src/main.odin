@@ -6,6 +6,10 @@ REGISTER_COUNT    :: 3
 
 Simulator :: struct
 {
+  instructions: InstructionStore,
+  symbol_table: SymbolTable,
+  text_section_pos: int,
+
   current_command: Command,
   step_to_next: bool,
 
@@ -29,11 +33,11 @@ OpcodeType :: enum
   SHR,
 
   CMP,
-  J,
-  JEQ,
-  JNE,
-  JLT,
-  JGT,
+  B,
+  BEQ,
+  BNE,
+  BLT,
+  BGT,
 }
 
 OPCODE_STRINGS :: [OpcodeType]string{
@@ -47,11 +51,11 @@ OPCODE_STRINGS :: [OpcodeType]string{
   .SHR = "shr",
 
   .CMP = "cmp",
-  .J   = "j",
-  .JEQ = "jeq",
-  .JNE = "jne",
-  .JLT = "jlt",
-  .JGT = "jgt",
+  .B   = "j",
+  .BEQ = "jeq",
+  .BNE = "jne",
+  .BLT = "jlt",
+  .BGT = "jgt",
 }
 
 Number :: distinct u8
@@ -65,14 +69,31 @@ Operand :: union
 
 NIL_REGISTER :: 255
 
+sim: Simulator
+
 @(private="file")
-command_table: map[string]CommandType
+command_table: map[string]CommandType = {
+  "q"    = .QUIT,
+  "quit" = .QUIT,
+  "h"    = .HELP,
+  "help" = .HELP,
+  "r"    = .RUN,
+  "run"  = .RUN,
+  ""     = .STEP,
+  "s"    = .STEP,
+  "step" = .STEP,
+}
 
 main :: proc()
 {
   fmt.print("======= ARCH SIM =======\n")
   fmt.print("Type [r] to run program or [s] to step next instruction.\n")
   fmt.print("Type [h] for a list of commands.\n\n")
+
+  perm_arena := rt.create_arena(rt.MIB * 8)
+  context.allocator = perm_arena.ally
+  temp_arena := rt.create_arena(rt.MIB * 8)
+  context.temp_allocator = temp_arena.ally
 
   src_file_path := "res/main.asm"
   if len(os.args) > 1
@@ -89,26 +110,82 @@ main :: proc()
   }
 
   buf: [MAX_SRC_BUF_BYTES]byte
-  size, _ := os.read(src_file, buf[:])
-  src_data := buf[:size]
+  src_size, _ := os.read(src_file, buf[:])
+  src_data := buf[:src_size]
 
-  // Build command table ----------------
+  sim.instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
+
+  /*
+    Order of Operation
+    1. tokenization
+    2. syntax check (?)
+    3. preprocessing
+    4. type check
+    5. execution
+  */
+
+  // Tokenize lines ----------------
+  line_start: int
+  for line_num := 0; true;
   {
-    command_table["q"]    = .QUIT
-    command_table["quit"] = .QUIT
-    command_table["h"]    = .HELP
-    command_table["help"] = .HELP
-    command_table["r"]    = .RUN
-    command_table["run"]  = .RUN
-    command_table[""]     = .STEP
-    command_table["s"]    = .STEP
-    command_table["step"] = .STEP
+    line_end, is_done := next_line(src_data, line_start)
+    line_tokens := tokenize_line_from_buffer(src_data[line_start:line_end])
+    line_start = line_end + 1
+    if len(line_tokens) == 0 do continue
+    
+    sim.instructions.data[line_num] = line_tokens
+
+    for &instruction, i in sim.instructions.data[line_num]
+    {
+      instruction.line = line_num+1
+      instruction.column = i
+    }
+
+    if is_done
+    {
+      sim.instructions.line_count = line_num + 1
+      break
+    }
+    
+    line_num += 1
   }
 
-  simulator: Simulator
+  // print_tokens()
+  // if true do return
 
-  instructions: InstructionStore
-  instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
+  // Preprocess program ----------------
+  for instruction_idx := 0; instruction_idx < sim.instructions.line_count; instruction_idx += 1
+  {
+    instruction := sim.instructions.data[instruction_idx]
+    for i in 0..<len(instruction)
+    {
+      // Directives
+      if instruction[i].type == .DIRECTIVE 
+      {
+        switch instruction[i].data
+        {
+          case "$define":
+          {
+            sim.symbol_table[instruction[i+1].data] = cast(Number) str_to_int(instruction[i+2].data)
+          }
+          case "$section":
+          {
+            section := instruction[i+1].data
+            switch section
+            {
+              case ".data": {}
+              case ".text": sim.text_section_pos = instruction_idx + 1
+              case: {}
+            }
+          }
+        }
+      }
+
+      // Labels
+    }    
+  }
+
+  // fmt.println(sim.symbol_table)
 
   // Prompt execution option ----------------
   for true
@@ -123,8 +200,8 @@ main :: proc()
     {
       case .QUIT: return
       case .HELP: print_commands_list(); continue
-      case .RUN:  simulator.step_to_next = false
-      case .STEP: simulator.step_to_next = true
+      case .RUN:  sim.step_to_next = false
+      case .STEP: sim.step_to_next = true
       case:
       {
         print_color(.RED)
@@ -138,36 +215,27 @@ main :: proc()
     break
   }
 
-  // Tokenize lines ----------------
-  line_start: int
-  for line_num := 0; true;
+  // Error check instructions ----------------
+  for instruction_idx := sim.text_section_pos; 
+      instruction_idx < sim.instructions.line_count; 
+      instruction_idx += 1
   {
-    line_end, is_done := next_line(src_data, line_start)
-    line := tokenize_line(src_data[line_start:line_end])
-    line_start = line_end + 1
-    if len(line) == 0 do continue
-    
-    instructions.data[line_num] = line
-
-    for &instruction, i in instructions.data[line_num]
+    error := syntax_and_semantic_check_instruction(sim.instructions.data[instruction_idx])
+    switch v in error
     {
-      instruction.line = line_num+1
-      instruction.column = i
+      case bool: {}
+      case SyntaxError: {}
+      case TypeError: {}
+      case OpcodeError: {}
     }
-
-    if is_done
-    {
-      instructions.line_count = line_num + 1
-      break
-    }
-    
-    line_num += 1
   }
 
-  // Execute instruction ----------------
-  for instruction_idx := 0; instruction_idx < instructions.line_count; instruction_idx += 1
+  // Execute instructions ----------------
+  for instruction_idx := sim.text_section_pos; 
+      instruction_idx < sim.instructions.line_count;
+      instruction_idx += 1
   {
-    instruction := instructions.data[instruction_idx]
+    instruction := sim.instructions.data[instruction_idx]
 
     operands: [3]Token
     operand_idx: int
@@ -199,10 +267,10 @@ main :: proc()
           switch v in op1_reg
           {
             case Number:   val = v
-            case Register: val = simulator.registers[v]
+            case Register: val = sim.registers[v]
           }
 
-          simulator.registers[dest_reg.(Register)] = val
+          sim.registers[dest_reg.(Register)] = val
         }
       }
       case .ADD: fallthrough
@@ -219,16 +287,16 @@ main :: proc()
         {
           val1, val2: Number
 
-          switch t in op1_reg
+          switch v in op1_reg
           {
-            case Number:   val1 = op1_reg.(Number)
-            case Register: val1 = simulator.registers[op1_reg.(Register)]
+            case Number:   val1 = v
+            case Register: val1 = sim.registers[v]
           }
 
-          switch t in op2_reg
+          switch v in op2_reg
           {
-            case Number:   val2 = op2_reg.(Number)
-            case Register: val2 = simulator.registers[op2_reg.(Register)]
+            case Number:   val2 = v
+            case Register: val2 = sim.registers[v]
           }
           
           result: Number
@@ -240,7 +308,7 @@ main :: proc()
             case .SHR: result = val1 >> val2
           }
 
-          simulator.registers[dest_reg.(Register)] = result
+          sim.registers[dest_reg.(Register)] = result
         }
       }
       case .CMP:
@@ -256,24 +324,24 @@ main :: proc()
           switch v in op1_reg
           {
             case Number:   val1 = v
-            case Register: val1 = simulator.registers[v]
+            case Register: val1 = sim.registers[v]
           }
 
           switch v in op2_reg
           {
             case Number:   val2 = v
-            case Register: val2 = simulator.registers[v]
+            case Register: val2 = sim.registers[v]
           }
 
-          simulator.cmp_flag.equals = val1 == val2
-          simulator.cmp_flag.greater = val1 > val2
+          sim.cmp_flag.equals = val1 == val2
+          sim.cmp_flag.greater = val1 > val2
         }
       }
-      case .J:   fallthrough
-      case .JEQ: fallthrough
-      case .JNE: fallthrough
-      case .JLT: fallthrough
-      case .JGT:
+      case .B:   fallthrough
+      case .BEQ: fallthrough
+      case .BNE: fallthrough
+      case .BLT: fallthrough
+      case .BGT:
       {
         dest, err0 := operand_from_operands(operands[:], 0)
         error = err0
@@ -281,11 +349,11 @@ main :: proc()
         should_jump: bool
         #partial switch opcode_token.opcode_type
         {
-          case .J:   should_jump = true
-          case .JEQ: should_jump = simulator.cmp_flag.equals
-          case .JNE: should_jump = !simulator.cmp_flag.equals
-          case .JLT: should_jump = !simulator.cmp_flag.greater
-          case .JGT: should_jump = simulator.cmp_flag.greater
+          case .B:   should_jump = true
+          case .BEQ: should_jump = sim.cmp_flag.equals
+          case .BNE: should_jump = !sim.cmp_flag.equals
+          case .BLT: should_jump = !sim.cmp_flag.greater
+          case .BGT: should_jump = sim.cmp_flag.greater
         }
 
         if !error && should_jump
@@ -311,7 +379,7 @@ main :: proc()
     print_color(.GRAY)
     fmt.print("Instruction: ")
     print_color(.WHITE)
-    for tok in instruction do fmt.print(string(tok.data), "")
+    for tok in instruction do fmt.print(tok.data, "")
     fmt.print("\n")
 
     print_color(.GRAY)
@@ -319,10 +387,10 @@ main :: proc()
     print_color(.WHITE)
     for reg in 0..<REGISTER_COUNT
     {
-      fmt.printf(" r%i=%i\n", reg, simulator.registers[reg])
+      fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
     }
 
-    if simulator.step_to_next && instruction_idx < instructions.line_count - 1
+    if sim.step_to_next && instruction_idx < sim.instructions.line_count - 1
     {
       // Prompt execution option ----------------
       for true
@@ -337,8 +405,8 @@ main :: proc()
         {
           case .QUIT: return
           case .HELP: print_commands_list(); continue
-          case .RUN:  simulator.step_to_next = false
-          case .STEP: simulator.step_to_next = true
+          case .RUN:  sim.step_to_next = false
+          case .STEP: sim.step_to_next = true
           case:
           {
             print_color(.RED)
@@ -372,7 +440,7 @@ next_line :: proc(buf: []byte, start: int) -> (end: int, is_done: bool)
     }
   }
 
-  is_done = end == length-1
+  is_done = end == length - 1
 
   return end, is_done
 }
@@ -406,7 +474,7 @@ command_from_string :: proc(str: string) -> Command
 
 Token :: struct
 {
-  data: []byte,
+  data: string,
   type: TokenType,
   opcode_type: OpcodeType,
 
@@ -421,6 +489,8 @@ TokenType :: enum
   OPCODE,
   NUMBER,
   IDENTIFIER,
+  OPERATOR,
+  DIRECTIVE,
 }
 
 Instruction :: []Token
@@ -431,31 +501,54 @@ InstructionStore :: struct
   line_count: int,
 }
 
-tokenize_line :: proc(buf: []byte) -> Instruction
+SymbolTable :: map[string]Number
+
+tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
 {
   tokens := make(Instruction, 10, context.allocator)
   token_idx: int
 
-  end_of_line := len(buf)
+  Tokenizer :: struct { pos, end: int }
+  tokenizer: Tokenizer
+  tokenizer.end = len(buf)
 
   // Ignore comment
-  for i in 0..<end_of_line-1
+  for i in 0..<tokenizer.end-1
   {
     if buf[i] == '/' && buf[i+1] == '/'
     {
-      end_of_line = i
+      tokenizer.end = i
       break
     }
   }
 
-  tokenizer_loop: for line_idx := 0; line_idx < end_of_line; line_idx += 1
+  // TODO(dg): Ignore spaces (difficulty: IMPOSSIBLE)
+  get_next_token_string :: #force_inline proc(tokenizer: ^Tokenizer, buf: []byte) -> string
   {
-    // Ignore spaces
-    if buf[line_idx] == ' ' do continue
-
+    start, end, offset: int
+    
     i: int
-    for i = line_idx; i < end_of_line && buf[i] != ',' && buf[i] != ' '; i += 1 {}
-    buf_str := string(buf[line_idx:i])
+    for i = tokenizer.pos; i < tokenizer.end; i += 1
+    {
+      c := buf[i]
+      if c == ' ' || c == ':' || c == '=' || c == ','
+      {
+        offset = int(i == tokenizer.pos)
+        break
+      }
+    }
+
+    start = tokenizer.pos
+    end = i + offset
+    tokenizer.pos = end
+
+    return cast(string) buf[start:end]
+  }
+
+  tokenizer_loop: for tokenizer.pos < tokenizer.end
+  {
+    buf_str := get_next_token_string(&tokenizer, buf)
+    if buf_str == "" || buf_str == " " || buf_str == "," do continue tokenizer_loop
 
     // Tokenize opcode
     for op_str, op_type in OPCODE_STRINGS
@@ -463,10 +556,9 @@ tokenize_line :: proc(buf: []byte) -> Instruction
       buf_str_lower := str_to_lower(buf_str)
       if buf_str_lower == op_str
       {
-        tokens[token_idx] = Token{data=buf[line_idx:i], type=.OPCODE}
+        tokens[token_idx] = Token{data=buf_str, type=.OPCODE}
         tokens[token_idx].opcode_type = op_type
         token_idx += 1
-        line_idx = i
         continue tokenizer_loop
       }
 
@@ -476,17 +568,31 @@ tokenize_line :: proc(buf: []byte) -> Instruction
     // Tokenize number
     if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
     {
-      tokens[token_idx] = Token{data=buf[line_idx:i], type=.NUMBER}
+      tokens[token_idx] = Token{data=buf_str, type=.NUMBER}
       token_idx += 1
-      line_idx = i
+      continue tokenizer_loop
+    }
+
+    // Tokenize operator
+    if buf_str == ":" || buf_str == "="
+    {
+      tokens[token_idx] = Token{data=buf_str, type=.OPERATOR}
+      token_idx += 1
+      continue tokenizer_loop
+    }
+
+    // Tokenize directive
+    if buf_str[0] == '$'
+    {
+      tokens[token_idx] = Token{data=buf_str, type=.DIRECTIVE}
+      token_idx += 1
       continue tokenizer_loop
     }
 
     // Tokenize identifier
     {
-      tokens[token_idx] = Token{data=buf[line_idx:i], type=.IDENTIFIER}
+      tokens[token_idx] = Token{data=buf_str, type=.IDENTIFIER}
       token_idx += 1
-      line_idx = i
       continue tokenizer_loop
     }
   }
@@ -494,17 +600,46 @@ tokenize_line :: proc(buf: []byte) -> Instruction
   return tokens[:token_idx]
 }
 
+syntax_and_semantic_check_instruction :: proc(instruction: Instruction) -> Error
+{
+  /*
+    For this part, we check whether the instruction contains an opcode in either 
+    the first slot when there is no label, or the second spot when there is one.
+  */
+  for opcode in OPCODE_STRINGS
+  {
+    if instruction[0].data != opcode
+    {
+      error := TypeError{
+        line = instruction[0].line,
+        column = instruction[0].column,
+        token = instruction[0],
+        expected_type = .OPCODE,
+        actual_type = instruction[0].type
+      }
+
+      return error
+    }
+  }
+
+  return nil
+}
+
 register_from_token :: proc(token: Token) -> (Register, bool)
 {
   result: Register
   error: bool
 
-  switch str_from_token(token)
+  switch token.data
   {
     case "r0": result = 0
     case "r1": result = 1
     case "r2": result = 2
-    case: result = NIL_REGISTER; error = true
+    case: 
+    {
+      result = NIL_REGISTER
+      error = true
+    }
   }
 
   return result, error
@@ -516,11 +651,17 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
 
   if token.type == .NUMBER
   {
-    opr = cast(Number) str_to_int(str_from_token(token))
+    opr = cast(Number) str_to_int(token.data)
   }
   else if token.type == .IDENTIFIER
   {
     opr, err = register_from_token(token)
+    if err
+    {
+      ok: bool
+      opr, ok = sim.symbol_table[token.data]
+      err = !ok
+    }
   }
   else
   {
@@ -528,6 +669,21 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
   }
 
   return opr, err
+}
+
+print_tokens :: proc()
+{
+  for i in 0..<sim.instructions.line_count
+  {
+    for tok in sim.instructions.data[i]
+    {
+      fmt.print("{", tok.data, "|", tok.type , "} ")
+    }
+
+    fmt.print("\n")
+  }
+
+  fmt.println("\n")
 }
 
 // @Terminal /////////////////////////////////////////////////////////////////////////////
@@ -560,7 +716,7 @@ print_color :: proc(kind: ColorKind)
 print_commands_list :: proc()
 {
   fmt.print("\n")
-  fmt.print("q, quit   :   quit simulator\n")
+  fmt.print("q, quit   :   quit sim\n")
   fmt.print("h, help   :   print list of commands\n")
   fmt.print("r, run    :   run program to breakpoint\n")
   fmt.print("s, step   :   step to next line\n")
@@ -585,3 +741,5 @@ pow_uint :: proc(base, exp: uint) -> uint
 
 import "core:fmt"
 import "core:os"
+
+import rt "root"
