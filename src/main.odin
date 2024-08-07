@@ -1,8 +1,9 @@
 package main
 
-MAX_SRC_BUF_BYTES :: 1024
-MAX_INSTRUCTIONS  :: 16
-REGISTER_COUNT    :: 3
+MAX_SRC_BUF_BYTES   :: 1024
+MAX_LINES           :: 32
+MAX_TOKENS_PER_LINE :: 10
+REGISTER_COUNT      :: 3
 
 Simulator :: struct
 {
@@ -109,11 +110,11 @@ main :: proc()
     return
   }
 
-  buf: [MAX_SRC_BUF_BYTES]byte
-  src_size, _ := os.read(src_file, buf[:])
-  src_data := buf[:src_size]
+  src_buf: [MAX_SRC_BUF_BYTES]byte
+  src_size, _ := os.read(src_file, src_buf[:])
+  src_data := src_buf[:src_size]
 
-  sim.instructions.data = make([][]Token, MAX_INSTRUCTIONS * 10)
+  sim.instructions.data = make([][]Token, MAX_LINES)
 
   /*
     Order of Operation
@@ -124,33 +125,144 @@ main :: proc()
     5. execution
   */
 
-  // Tokenize lines ----------------
+  // Tokenize source code ----------------
   line_start: int
-  for line_num := 0; true;
+  for line_idx := 0; true;
   {
-    line_end, is_done := next_line(src_data, line_start)
-    line_tokens := tokenize_line_from_buffer(src_data[line_start:line_end])
-    line_start = line_end + 1
-    if len(line_tokens) == 0 do continue
-    
-    sim.instructions.data[line_num] = line_tokens
-
-    for &instruction, i in sim.instructions.data[line_num]
+    line_end := next_line(src_data, line_start)
+    sim.instructions.line_count = line_idx
+    if line_start == line_end
     {
-      instruction.line = line_num+1
+      line_start += 1
+      if line_end == len(src_data) - 1 do break
+      else do continue
+    }
+    
+    sim.instructions.data[line_idx] = make(Instruction, 10, context.allocator)
+    {
+      line_bytes := src_data[line_start:line_end]
+
+      line_tokens := sim.instructions.data[line_idx]
+      token_cnt: int
+
+      Tokenizer :: struct { pos, end: int }
+      tokenizer: Tokenizer
+      tokenizer.end = len(line_bytes)
+
+      // Ignore comment
+      for i in 0..<tokenizer.end-1
+      {
+        if line_bytes[i] == '/' && line_bytes[i+1] == '/'
+        {
+          tokenizer.end = i
+          break
+        }
+      }
+
+      get_next_token_string :: #force_inline proc(tokenizer: ^Tokenizer, buf: []byte) -> string
+      {
+        start, end, offset: int
+        whitespace: bool
+      
+        i: int
+        for i = tokenizer.pos; i < tokenizer.end; i += 1
+        {
+          b := buf[i]
+
+          if i == tokenizer.pos && b == ' ' do whitespace = true
+
+          if whitespace
+          {
+            if b == ' ' do start += 1
+            else        do whitespace = false
+          }
+          else if b == ':' || b == '=' || b == ',' || b == ' '
+          {
+            offset = int(i == tokenizer.pos)
+            break
+          }
+        }
+
+        start += tokenizer.pos
+        end = i + offset
+        tokenizer.pos = end
+
+        return cast(string) buf[start:end]
+      }
+
+      tokenizer_loop: for tokenizer.pos < tokenizer.end
+      {
+        buf_str := get_next_token_string(&tokenizer, line_bytes)
+        if buf_str == "" || buf_str == "," do continue tokenizer_loop
+
+        // Tokenize opcode
+        for op_str, op_type in OPCODE_STRINGS
+        {
+          buf_str_lower := str_to_lower(buf_str)
+          if buf_str_lower == op_str
+          {
+            line_tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+            line_tokens[token_cnt].opcode_type = op_type
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+
+          free_all(context.temp_allocator)
+        }
+
+        // Tokenize number
+        if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
+        {
+          line_tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+          token_cnt += 1
+          continue tokenizer_loop
+        }
+
+        // Tokenize operator
+        {
+          @(static)
+          operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
+          
+          if buf_str == ":" || buf_str == "="
+          {
+            line_tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+        }
+
+        // Tokenize directive
+        if buf_str[0] == '$'
+        {
+          line_tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+          token_cnt += 1
+          continue tokenizer_loop
+        }
+
+        // Tokenize identifier
+        {
+          line_tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+          token_cnt += 1
+          continue tokenizer_loop
+        }
+      }
+
+      sim.instructions.data[line_idx] = line_tokens[:token_cnt]
+    }
+
+    line_start = line_end + 1
+    
+    for &instruction, i in sim.instructions.data[line_idx]
+    {
+      instruction.line = line_idx + 1
       instruction.column = i
     }
-
-    if is_done
-    {
-      sim.instructions.line_count = line_num + 1
-      break
-    }
     
-    line_num += 1
+    line_idx += 1
   }
 
-  // print_tokens()
+  fmt.println(sim.instructions.line_count)
+  print_tokens()
   // if true do return
 
   // Preprocess program ----------------
@@ -427,22 +539,26 @@ main :: proc()
   }
 }
 
-next_line :: proc(buf: []byte, start: int) -> (end: int, is_done: bool)
+next_line :: proc(buf: []byte, start: int) -> (end: int)
 {
   length := len(buf)
 
+  end = start
   for i in start..<length
   {
-    if buf[i] == '\n' || buf[i] == '\r'
+    if (buf[i] == '\n' || buf[i] == '\r') 
     {
       end = i
       break
     }
   }
 
-  is_done = end == length - 1
+  return end
+}
 
-  return end, is_done
+next_line_bytes :: proc(buf: []byte) -> []byte
+{
+  return nil
 }
 
 Command :: struct
@@ -489,8 +605,9 @@ TokenType :: enum
   OPCODE,
   NUMBER,
   IDENTIFIER,
-  OPERATOR,
   DIRECTIVE,
+  COLON,
+  EQUALS,
 }
 
 Instruction :: []Token
@@ -503,10 +620,10 @@ InstructionStore :: struct
 
 SymbolTable :: map[string]Number
 
-tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
+tokenize_line_from_bytes :: proc(buf: []byte) -> Instruction
 {
   tokens := make(Instruction, 10, context.allocator)
-  token_idx: int
+  token_cnt: int
 
   Tokenizer :: struct { pos, end: int }
   tokenizer: Tokenizer
@@ -522,23 +639,31 @@ tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
     }
   }
 
-  // TODO(dg): Ignore spaces (difficulty: IMPOSSIBLE)
   get_next_token_string :: #force_inline proc(tokenizer: ^Tokenizer, buf: []byte) -> string
   {
     start, end, offset: int
-    
+    whitespace: bool
+   
     i: int
     for i = tokenizer.pos; i < tokenizer.end; i += 1
     {
-      c := buf[i]
-      if c == ' ' || c == ':' || c == '=' || c == ','
+      b := buf[i]
+
+      if i == tokenizer.pos && b == ' ' do whitespace = true
+
+      if whitespace
+      {
+        if b == ' ' do start += 1
+        else        do whitespace = false
+      }
+      else if b == ':' || b == '=' || b == ',' || b == ' '
       {
         offset = int(i == tokenizer.pos)
         break
       }
     }
 
-    start = tokenizer.pos
+    start += tokenizer.pos
     end = i + offset
     tokenizer.pos = end
 
@@ -548,7 +673,7 @@ tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
   tokenizer_loop: for tokenizer.pos < tokenizer.end
   {
     buf_str := get_next_token_string(&tokenizer, buf)
-    if buf_str == "" || buf_str == " " || buf_str == "," do continue tokenizer_loop
+    if buf_str == "" || buf_str == "," do continue tokenizer_loop
 
     // Tokenize opcode
     for op_str, op_type in OPCODE_STRINGS
@@ -556,9 +681,9 @@ tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
       buf_str_lower := str_to_lower(buf_str)
       if buf_str_lower == op_str
       {
-        tokens[token_idx] = Token{data=buf_str, type=.OPCODE}
-        tokens[token_idx].opcode_type = op_type
-        token_idx += 1
+        tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+        tokens[token_cnt].opcode_type = op_type
+        token_cnt += 1
         continue tokenizer_loop
       }
 
@@ -568,36 +693,41 @@ tokenize_line_from_buffer :: proc(buf: []byte) -> Instruction
     // Tokenize number
     if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
     {
-      tokens[token_idx] = Token{data=buf_str, type=.NUMBER}
-      token_idx += 1
+      tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+      token_cnt += 1
       continue tokenizer_loop
     }
 
     // Tokenize operator
-    if buf_str == ":" || buf_str == "="
     {
-      tokens[token_idx] = Token{data=buf_str, type=.OPERATOR}
-      token_idx += 1
-      continue tokenizer_loop
+      @(static)
+      operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
+      
+      if buf_str == ":" || buf_str == "="
+      {
+        tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
+        token_cnt += 1
+        continue tokenizer_loop
+      }
     }
 
     // Tokenize directive
     if buf_str[0] == '$'
     {
-      tokens[token_idx] = Token{data=buf_str, type=.DIRECTIVE}
-      token_idx += 1
+      tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+      token_cnt += 1
       continue tokenizer_loop
     }
 
     // Tokenize identifier
     {
-      tokens[token_idx] = Token{data=buf_str, type=.IDENTIFIER}
-      token_idx += 1
+      tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+      token_cnt += 1
       continue tokenizer_loop
     }
   }
 
-  return tokens[:token_idx]
+  return tokens[:token_cnt]
 }
 
 syntax_and_semantic_check_instruction :: proc(instruction: Instruction) -> Error

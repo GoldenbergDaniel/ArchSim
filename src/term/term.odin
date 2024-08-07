@@ -1,5 +1,8 @@
 package term
 
+@(private)
+current_color: ColorKind
+
 ColorKind :: enum
 {
   BLACK,
@@ -34,13 +37,15 @@ color :: proc(kind: ColorKind)
     case .WHITE:  fmt.print("\u001b[38;5;15m")
     case .YELLOW: fmt.print("\u001b[38;5;3m")
   }
+
+  current_color = kind
 }
 
 cursor_mode :: proc(mode: CursorMode)
 {
   switch mode
   {
-    case .DEFAULT: fmt.print("\u001b[0m")
+    case .DEFAULT: fmt.print("\u001b[0m"); color(current_color)
     case .BLINK:   fmt.print("\u001b[25m")
   }
 }

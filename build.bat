@@ -13,4 +13,4 @@ if "%MODE%"=="dbg" set FLAGS=-o:none -debug
 if "%MODE%"=="rls" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
 
 set ODIN_ROOT=odin
-odin\odin.exe build %SRC% -out:%OUT% %FLAGS% || exit 1
+odin\odin.exe build %SRC% -out:%OUT% %FLAGS%
