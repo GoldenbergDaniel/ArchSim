@@ -1,12 +1,12 @@
-
 $define VAL_1 8
 $define VAL_2 16
 
-
-
-
 $section .text
-
-LABEL_1: mov r0, VAL_1
-LABEL_2: mov r1, VAL_2
-
+            mov r1, VAL_1
+            mov r2, VAL_2
+            cmp r2, r1
+            bgt R2_GREATER
+            mov r0, 1
+            b CONTINUE
+R2_GREATER: mov r0, 2
+CONTINUE:   mov r0, r0

@@ -2,14 +2,16 @@ package main
 
 MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 32
-MAX_TOKENS_PER_LINE :: 10
+MAX_TOKENS_PER_LINE :: 8
 REGISTER_COUNT      :: 3
 
 Simulator :: struct
 {
   instructions: InstructionStore,
   symbol_table: SymbolTable,
+  data_section_pos: int,
   text_section_pos: int,
+  branch_to_idx: int,
 
   current_command: Command,
   step_to_next: bool,
@@ -52,11 +54,11 @@ OPCODE_STRINGS :: [OpcodeType]string{
   .SHR = "shr",
 
   .CMP = "cmp",
-  .B   = "j",
-  .BEQ = "jeq",
-  .BNE = "jne",
-  .BLT = "jlt",
-  .BGT = "jgt",
+  .B   = "b",
+  .BEQ = "beq",
+  .BNE = "bne",
+  .BLT = "blt",
+  .BGT = "bgt",
 }
 
 Number :: distinct u8
@@ -126,23 +128,23 @@ main :: proc()
   */
 
   // Tokenize source code ----------------
-  line_start: int
-  for line_idx := 0; true;
+  line_start, line_end: int
+  for line_idx := 0; line_end < len(src_data); line_idx += 1
   {
-    line_end := next_line(src_data, line_start)
-    sim.instructions.line_count = line_idx
+    line_end = next_line(src_data, line_start)
+
     if line_start == line_end
     {
       line_start += 1
       if line_end == len(src_data) - 1 do break
-      else do continue
+      continue
     }
     
-    sim.instructions.data[line_idx] = make(Instruction, 10, context.allocator)
+    sim.instructions.data[sim.instructions.count] = make(Instruction, MAX_TOKENS_PER_LINE)
     {
       line_bytes := src_data[line_start:line_end]
 
-      line_tokens := sim.instructions.data[line_idx]
+      line_tokens := sim.instructions.data[sim.instructions.count]
       token_cnt: int
 
       Tokenizer :: struct { pos, end: int }
@@ -193,6 +195,7 @@ main :: proc()
       tokenizer_loop: for tokenizer.pos < tokenizer.end
       {
         buf_str := get_next_token_string(&tokenizer, line_bytes)
+        // fmt.println(buf_str)
         if buf_str == "" || buf_str == "," do continue tokenizer_loop
 
         // Tokenize opcode
@@ -250,42 +253,42 @@ main :: proc()
       sim.instructions.data[line_idx] = line_tokens[:token_cnt]
     }
 
+    sim.instructions.count += 1
     line_start = line_end + 1
     
-    for &instruction, i in sim.instructions.data[line_idx]
+    for &instruction, i in sim.instructions.data[sim.instructions.count]
     {
       instruction.line = line_idx + 1
       instruction.column = i
     }
-    
-    line_idx += 1
   }
 
-  fmt.println(sim.instructions.line_count)
-  print_tokens()
+  // fmt.println(sim.instructions.count)
+  // print_tokens()
   // if true do return
 
   // Preprocess program ----------------
-  for instruction_idx := 0; instruction_idx < sim.instructions.line_count; instruction_idx += 1
+  for instruction_idx := 0; instruction_idx < sim.instructions.count; instruction_idx += 1
   {
     instruction := sim.instructions.data[instruction_idx]
-    for i in 0..<len(instruction)
     {
       // Directives
-      if instruction[i].type == .DIRECTIVE 
+      if instruction[0].type == .DIRECTIVE 
       {
-        switch instruction[i].data
+        if len(instruction) < 3 do continue
+
+        switch instruction[0].data
         {
           case "$define":
           {
-            sim.symbol_table[instruction[i+1].data] = cast(Number) str_to_int(instruction[i+2].data)
+            sim.symbol_table[instruction[1].data] = Number(str_to_int(instruction[2].data))
           }
           case "$section":
           {
-            section := instruction[i+1].data
+            section := instruction[1].data
             switch section
             {
-              case ".data": {}
+              case ".data": sim.data_section_pos = instruction_idx + 1
               case ".text": sim.text_section_pos = instruction_idx + 1
               case: {}
             }
@@ -294,13 +297,15 @@ main :: proc()
       }
 
       // Labels
+      if instruction[0].type == .IDENTIFIER && instruction[1].type == .COLON
+      {
+        sim.symbol_table[instruction[0].data] = Number(instruction_idx - sim.text_section_pos)
+      }
     }    
   }
 
-  // fmt.println(sim.symbol_table)
-
   // Prompt execution option ----------------
-  for true
+  for
   {
     buf: [8]byte
     fmt.print("> ")
@@ -329,7 +334,7 @@ main :: proc()
 
   // Error check instructions ----------------
   for instruction_idx := sim.text_section_pos; 
-      instruction_idx < sim.instructions.line_count; 
+      instruction_idx < sim.instructions.count; 
       instruction_idx += 1
   {
     error := syntax_and_semantic_check_instruction(sim.instructions.data[instruction_idx])
@@ -344,26 +349,35 @@ main :: proc()
 
   // Execute instructions ----------------
   for instruction_idx := sim.text_section_pos; 
-      instruction_idx < sim.instructions.line_count;
-      instruction_idx += 1
+      instruction_idx < sim.instructions.count;
   {
     instruction := sim.instructions.data[instruction_idx]
+    sim.branch_to_idx = instruction_idx + 1
 
+
+    // Determine opcode and operand indices ----------------
+    opcode: Token
     operands: [3]Token
-    operand_idx: int
-    for token in instruction
     {
-      if token.type == .IDENTIFIER || token.type == .NUMBER
+      if instruction[0].type == .OPCODE
       {
-        operands[operand_idx] = token
-        operand_idx += 1
+        opcode = instruction[0]
+        operands[0] = instruction[1]
+        operands[1] = instruction[2]
+        operands[2] = instruction[3]
+      }
+      else if instruction[2].type == .OPCODE
+      {
+        opcode = instruction[2]
+        operands[0] = instruction[3]
+        operands[1] = instruction[4]
+        operands[2] = instruction[5]
       }
     }
 
     error: bool
 
-    opcode_token := instruction[0]
-    switch opcode_token.opcode_type
+    switch opcode.opcode_type
     {
       case .NIL: {}
       case .MOV:
@@ -459,7 +473,7 @@ main :: proc()
         error = err0
 
         should_jump: bool
-        #partial switch opcode_token.opcode_type
+        #partial switch opcode.opcode_type
         {
           case .B:   should_jump = true
           case .BEQ: should_jump = sim.cmp_flag.equals
@@ -470,7 +484,7 @@ main :: proc()
 
         if !error && should_jump
         {
-          instruction_idx = cast(int) dest.(Number) - 1
+          sim.branch_to_idx = cast(int) dest.(Number) + sim.text_section_pos
         }
       }
     }
@@ -486,7 +500,12 @@ main :: proc()
     term.color(.GRAY)
     fmt.print("Address: ")
     term.color(.WHITE)
-    fmt.printf("%#X\n", instruction_idx)
+    fmt.printf("%#X\n", instruction_idx - sim.text_section_pos)
+
+    term.color(.GRAY)
+    fmt.print("Next address: ")
+    term.color(.WHITE)
+    fmt.printf("%#X\n", sim.branch_to_idx - sim.text_section_pos)
 
     term.color(.GRAY)
     fmt.print("Instruction: ")
@@ -502,7 +521,10 @@ main :: proc()
       fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
     }
 
-    if sim.step_to_next && instruction_idx < sim.instructions.line_count - 1
+    // Set next instruction to result of branch
+    instruction_idx = sim.branch_to_idx
+
+    if sim.step_to_next && instruction_idx < sim.instructions.count - 1
     {
       // Prompt execution option ----------------
       for true
@@ -615,120 +637,10 @@ Instruction :: []Token
 InstructionStore :: struct
 {
   data: []Instruction,
-  line_count: int,
+  count: int,
 }
 
 SymbolTable :: map[string]Number
-
-tokenize_line_from_bytes :: proc(buf: []byte) -> Instruction
-{
-  tokens := make(Instruction, 10, context.allocator)
-  token_cnt: int
-
-  Tokenizer :: struct { pos, end: int }
-  tokenizer: Tokenizer
-  tokenizer.end = len(buf)
-
-  // Ignore comment
-  for i in 0..<tokenizer.end-1
-  {
-    if buf[i] == '/' && buf[i+1] == '/'
-    {
-      tokenizer.end = i
-      break
-    }
-  }
-
-  get_next_token_string :: #force_inline proc(tokenizer: ^Tokenizer, buf: []byte) -> string
-  {
-    start, end, offset: int
-    whitespace: bool
-   
-    i: int
-    for i = tokenizer.pos; i < tokenizer.end; i += 1
-    {
-      b := buf[i]
-
-      if i == tokenizer.pos && b == ' ' do whitespace = true
-
-      if whitespace
-      {
-        if b == ' ' do start += 1
-        else        do whitespace = false
-      }
-      else if b == ':' || b == '=' || b == ',' || b == ' '
-      {
-        offset = int(i == tokenizer.pos)
-        break
-      }
-    }
-
-    start += tokenizer.pos
-    end = i + offset
-    tokenizer.pos = end
-
-    return cast(string) buf[start:end]
-  }
-
-  tokenizer_loop: for tokenizer.pos < tokenizer.end
-  {
-    buf_str := get_next_token_string(&tokenizer, buf)
-    if buf_str == "" || buf_str == "," do continue tokenizer_loop
-
-    // Tokenize opcode
-    for op_str, op_type in OPCODE_STRINGS
-    {
-      buf_str_lower := str_to_lower(buf_str)
-      if buf_str_lower == op_str
-      {
-        tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
-        tokens[token_cnt].opcode_type = op_type
-        token_cnt += 1
-        continue tokenizer_loop
-      }
-
-      free_all(context.temp_allocator)
-    }
-
-    // Tokenize number
-    if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
-    {
-      tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
-      token_cnt += 1
-      continue tokenizer_loop
-    }
-
-    // Tokenize operator
-    {
-      @(static)
-      operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
-      
-      if buf_str == ":" || buf_str == "="
-      {
-        tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
-        token_cnt += 1
-        continue tokenizer_loop
-      }
-    }
-
-    // Tokenize directive
-    if buf_str[0] == '$'
-    {
-      tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
-      token_cnt += 1
-      continue tokenizer_loop
-    }
-
-    // Tokenize identifier
-    {
-      tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
-      token_cnt += 1
-      continue tokenizer_loop
-    }
-  }
-
-  return tokens[:token_cnt]
-}
 
 syntax_and_semantic_check_instruction :: proc(instruction: Instruction) -> Error
 {
@@ -805,10 +717,12 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
 
 print_tokens :: proc()
 {
-  for i in 0..<sim.instructions.line_count
+  for i in 0..<sim.instructions.count
   {
     for tok in sim.instructions.data[i]
     {
+      if tok.type == .NIL do continue
+
       fmt.print("{", tok.data, "|", tok.type , "} ")
     }
 
