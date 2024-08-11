@@ -3,6 +3,7 @@ package main
 MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 32
 MAX_TOKENS_PER_LINE :: 8
+
 REGISTER_COUNT      :: 3
 
 Simulator :: struct
@@ -36,11 +37,14 @@ OpcodeType :: enum
   SHR,
 
   CMP,
+
   B,
   BEQ,
   BNE,
   BLT,
   BGT,
+  BLE,
+  BGE,
 }
 
 OPCODE_STRINGS :: [OpcodeType]string{
@@ -54,11 +58,14 @@ OPCODE_STRINGS :: [OpcodeType]string{
   .SHR = "shr",
 
   .CMP = "cmp",
+
   .B   = "b",
   .BEQ = "beq",
   .BNE = "bne",
   .BLT = "blt",
   .BGT = "bgt",
+  .BLE = "ble",
+  .BGE = "bge",
 }
 
 Number :: distinct u8
@@ -76,15 +83,17 @@ sim: Simulator
 
 @(private="file")
 command_table: map[string]CommandType = {
-  "q"    = .QUIT,
-  "quit" = .QUIT,
-  "h"    = .HELP,
-  "help" = .HELP,
-  "r"    = .RUN,
-  "run"  = .RUN,
-  ""     = .STEP,
-  "s"    = .STEP,
-  "step" = .STEP,
+  "q"           = .QUIT,
+  "quit"        = .QUIT,
+  "h"           = .HELP,
+  "help"        = .HELP,
+  "r"           = .RUN,
+  "run"         = .RUN,
+  ""            = .STEP,
+  "s"           = .STEP,
+  "step"        = .STEP,
+  "bp"          = .SET_BREAK,
+  "breakpoint"  = .SET_BREAK,
 }
 
 main :: proc()
@@ -118,162 +127,161 @@ main :: proc()
 
   sim.instructions.data = make([][]Token, MAX_LINES)
 
-  /*
-    Order of Operation
-    1. tokenization
-    2. syntax check (?)
-    3. preprocessing
-    4. type check
-    5. execution
-  */
-
-  // Tokenize source code ----------------
-  line_start, line_end: int
-  for line_idx := 0; line_end < len(src_data); line_idx += 1
+  // Tokenize ----------------
   {
-    line_end = next_line(src_data, line_start)
-
-    if line_start == line_end
+    line_start, line_end: int
+    for line_idx := 0; line_end < len(src_data); line_idx += 1
     {
-      line_start += 1
-      if line_end == len(src_data) - 1 do break
-      continue
-    }
-    
-    sim.instructions.data[sim.instructions.count] = make(Instruction, MAX_TOKENS_PER_LINE)
-    {
-      line_bytes := src_data[line_start:line_end]
+      line_end = next_line(src_data, line_start)
 
-      line_tokens := sim.instructions.data[sim.instructions.count]
-      token_cnt: int
-
-      Tokenizer :: struct { pos, end: int }
-      tokenizer: Tokenizer
-      tokenizer.end = len(line_bytes)
-
-      // Ignore comment
-      for i in 0..<tokenizer.end-1
+      if line_start == line_end
       {
-        if line_bytes[i] == '/' && line_bytes[i+1] == '/'
-        {
-          tokenizer.end = i
-          break
-        }
+        line_start += 1
+        if line_end == len(src_data) - 1 do break
+        else do continue
       }
-
-      get_next_token_string :: #force_inline proc(tokenizer: ^Tokenizer, buf: []byte) -> string
-      {
-        start, end, offset: int
-        whitespace: bool
       
-        i: int
-        for i = tokenizer.pos; i < tokenizer.end; i += 1
+      sim.instructions.data[sim.instructions.count] = make(Instruction, MAX_TOKENS_PER_LINE)
+      {
+        line_bytes := src_data[line_start:line_end]
+
+        line_tokens := sim.instructions.data[sim.instructions.count]
+        token_cnt: int
+
+        Tokenizer :: struct { pos, end: int }
+        tokenizer: Tokenizer
+        tokenizer.end = len(line_bytes)
+
+        // Ignore commented section
+        for i in 0..<tokenizer.end-1
         {
-          b := buf[i]
-
-          if i == tokenizer.pos && b == ' ' do whitespace = true
-
-          if whitespace
+          if line_bytes[i] == '/' && line_bytes[i+1] == '/'
           {
-            if b == ' ' do start += 1
-            else        do whitespace = false
-          }
-          else if b == ':' || b == '=' || b == ',' || b == ' '
-          {
-            offset = int(i == tokenizer.pos)
+            tokenizer.end = i
             break
           }
         }
 
-        start += tokenizer.pos
-        end = i + offset
-        tokenizer.pos = end
+        get_next_token_string :: proc(tokenizer: ^Tokenizer, buf: []byte) -> string
+        {
+          start, end, offset: int
+          whitespace: bool
+        
+          i: int
+          for i = tokenizer.pos; i < tokenizer.end; i += 1
+          {
+            b := buf[i]
 
-        return cast(string) buf[start:end]
+            if i == tokenizer.pos && b == ' '
+            {
+              whitespace = true
+            }
+
+            if whitespace
+            {
+              if b == ' '
+              {
+                start += 1
+              }
+              else
+              {
+                whitespace = false
+              }
+            }
+            else if b == ':' || b == '=' || b == ',' || b == ' '
+            {
+              offset = int(i == tokenizer.pos)
+              break
+            }
+          }
+
+          start += tokenizer.pos
+          end = i + offset
+          tokenizer.pos = end
+
+          return cast(string) buf[start:end]
+        }
+
+        tokenizer_loop: for tokenizer.pos < tokenizer.end
+        {
+          buf_str := get_next_token_string(&tokenizer, line_bytes)
+          if buf_str == "" || buf_str == "," do continue tokenizer_loop
+
+          // Tokenize opcode
+          for op_str, op_type in OPCODE_STRINGS
+          {
+            buf_str_lower := str_to_lower(buf_str)
+            if buf_str_lower == op_str
+            {
+              line_tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+              line_tokens[token_cnt].opcode_type = op_type
+              token_cnt += 1
+              continue tokenizer_loop
+            }
+
+            free_all(context.temp_allocator)
+          }
+
+          // Tokenize number
+          if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
+          {
+            line_tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+
+          // Tokenize operator
+          {
+            @(static)
+            operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
+            
+            if buf_str == ":" || buf_str == "="
+            {
+              line_tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
+              token_cnt += 1
+              continue tokenizer_loop
+            }
+          }
+
+          // Tokenize directive
+          if buf_str[0] == '$'
+          {
+            line_tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+
+          // Tokenize identifier
+          {
+            line_tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+        }
+
+        sim.instructions.data[line_idx] = line_tokens[:token_cnt]
       }
 
-      tokenizer_loop: for tokenizer.pos < tokenizer.end
+      sim.instructions.count += 1
+      line_start = line_end + 1
+      
+      for &instruction, i in sim.instructions.data[sim.instructions.count]
       {
-        buf_str := get_next_token_string(&tokenizer, line_bytes)
-        // fmt.println(buf_str)
-        if buf_str == "" || buf_str == "," do continue tokenizer_loop
-
-        // Tokenize opcode
-        for op_str, op_type in OPCODE_STRINGS
-        {
-          buf_str_lower := str_to_lower(buf_str)
-          if buf_str_lower == op_str
-          {
-            line_tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
-            line_tokens[token_cnt].opcode_type = op_type
-            token_cnt += 1
-            continue tokenizer_loop
-          }
-
-          free_all(context.temp_allocator)
-        }
-
-        // Tokenize number
-        if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
-        {
-          line_tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
-          token_cnt += 1
-          continue tokenizer_loop
-        }
-
-        // Tokenize operator
-        {
-          @(static)
-          operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
-          
-          if buf_str == ":" || buf_str == "="
-          {
-            line_tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
-            token_cnt += 1
-            continue tokenizer_loop
-          }
-        }
-
-        // Tokenize directive
-        if buf_str[0] == '$'
-        {
-          line_tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
-          token_cnt += 1
-          continue tokenizer_loop
-        }
-
-        // Tokenize identifier
-        {
-          line_tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
-          token_cnt += 1
-          continue tokenizer_loop
-        }
+        instruction.line = line_idx + 1
+        instruction.column = i
       }
-
-      sim.instructions.data[line_idx] = line_tokens[:token_cnt]
-    }
-
-    sim.instructions.count += 1
-    line_start = line_end + 1
-    
-    for &instruction, i in sim.instructions.data[sim.instructions.count]
-    {
-      instruction.line = line_idx + 1
-      instruction.column = i
     }
   }
 
-  // fmt.println(sim.instructions.count)
   // print_tokens()
-  // if true do return
 
-  // Preprocess program ----------------
+  // Preprocess ----------------
   for instruction_idx := 0; instruction_idx < sim.instructions.count; instruction_idx += 1
   {
     instruction := sim.instructions.data[instruction_idx]
     {
       // Directives
-      if instruction[0].type == .DIRECTIVE 
+      if instruction[0].type == .DIRECTIVE
       {
         if len(instruction) < 3 do continue
 
@@ -304,7 +312,47 @@ main :: proc()
     }    
   }
 
-  // Prompt execution option ----------------
+  // Error check ----------------
+  for instruction_idx := sim.text_section_pos; 
+      instruction_idx < sim.instructions.count; 
+      instruction_idx += 1
+  {
+    error: Error
+    instruction := sim.instructions.data[instruction_idx]
+
+    // Syntax
+    if  instruction[0].line >= sim.text_section_pos && 
+        instruction[0].type == .IDENTIFIER && 
+        instruction[0].opcode_type == .NIL &&
+        instruction[1].type != .COLON
+    {
+      error = SyntaxError{
+        type = .MISSING_COLON,
+        line = instruction[0].line
+      }
+    }
+
+    if resolve_error(error) do return
+
+    // Opcode
+    for opcode in OPCODE_STRINGS
+    {
+      if instruction[0].data != opcode
+      {
+        error = TypeError{
+          line = instruction[0].line,
+          column = instruction[0].column,
+          token = instruction[0],
+          expected_type = .OPCODE,
+          actual_type = instruction[0].type
+        }
+      }
+    }
+
+    // if resolve_error(error) do return
+  }
+
+  // Prompt user command ----------------
   for
   {
     buf: [8]byte
@@ -332,22 +380,7 @@ main :: proc()
     break
   }
 
-  // Error check instructions ----------------
-  for instruction_idx := sim.text_section_pos; 
-      instruction_idx < sim.instructions.count; 
-      instruction_idx += 1
-  {
-    error := syntax_and_semantic_check_instruction(sim.instructions.data[instruction_idx])
-    switch v in error
-    {
-      case bool: {}
-      case SyntaxError: {}
-      case TypeError: {}
-      case OpcodeError: {}
-    }
-  }
-
-  // Execute instructions ----------------
+  // Execute/Simulate ----------------
   for instruction_idx := sim.text_section_pos; 
       instruction_idx < sim.instructions.count;
   {
@@ -467,7 +500,9 @@ main :: proc()
       case .BEQ: fallthrough
       case .BNE: fallthrough
       case .BLT: fallthrough
-      case .BGT:
+      case .BGT: fallthrough
+      case .BLE: fallthrough
+      case .BGE:
       {
         dest, err0 := operand_from_operands(operands[:], 0)
         error = err0
@@ -480,6 +515,8 @@ main :: proc()
           case .BNE: should_jump = !sim.cmp_flag.equals
           case .BLT: should_jump = !sim.cmp_flag.greater
           case .BGT: should_jump = sim.cmp_flag.greater
+          case .BLE: should_jump = sim.cmp_flag.greater || sim.cmp_flag.equals
+          case .BGE: should_jump = sim.cmp_flag.greater || sim.cmp_flag.equals
         }
 
         if !error && should_jump
@@ -578,11 +615,6 @@ next_line :: proc(buf: []byte, start: int) -> (end: int)
   return end
 }
 
-next_line_bytes :: proc(buf: []byte) -> []byte
-{
-  return nil
-}
-
 Command :: struct
 {
   type: CommandType,
@@ -598,6 +630,7 @@ CommandType :: enum
   RUN,
   RUN_TO,
   STEP,
+  SET_BREAK,
 }
 
 command_from_string :: proc(str: string) -> Command
@@ -642,36 +675,8 @@ InstructionStore :: struct
 
 SymbolTable :: map[string]Number
 
-syntax_and_semantic_check_instruction :: proc(instruction: Instruction) -> Error
+register_from_token :: proc(token: Token) -> (result: Register, err: bool)
 {
-  /*
-    For this part, we check whether the instruction contains an opcode in either 
-    the first slot when there is no label, or the second spot when there is one.
-  */
-  for opcode in OPCODE_STRINGS
-  {
-    if instruction[0].data != opcode
-    {
-      error := TypeError{
-        line = instruction[0].line,
-        column = instruction[0].column,
-        token = instruction[0],
-        expected_type = .OPCODE,
-        actual_type = instruction[0].type
-      }
-
-      return error
-    }
-  }
-
-  return nil
-}
-
-register_from_token :: proc(token: Token) -> (Register, bool)
-{
-  result: Register
-  error: bool
-
   switch token.data
   {
     case "r0": result = 0
@@ -680,28 +685,28 @@ register_from_token :: proc(token: Token) -> (Register, bool)
     case: 
     {
       result = NIL_REGISTER
-      error = true
+      err = true
     }
   }
 
-  return result, error
+  return result, err
 }
 
-operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err: bool)
+operand_from_operands :: proc(operands: []Token, idx: int) -> (result: Operand, err: bool)
 {
   token := operands[idx]
 
   if token.type == .NUMBER
   {
-    opr = cast(Number) str_to_int(token.data)
+    result = cast(Number) str_to_int(token.data)
   }
   else if token.type == .IDENTIFIER
   {
-    opr, err = register_from_token(token)
+    result, err = register_from_token(token)
     if err
     {
       ok: bool
-      opr, ok = sim.symbol_table[token.data]
+      result, ok = sim.symbol_table[token.data]
       err = !ok
     }
   }
@@ -710,7 +715,7 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (opr: Operand, err
     err = true
   }
 
-  return opr, err
+  return result, err
 }
 
 // @Terminal /////////////////////////////////////////////////////////////////////////////
@@ -722,7 +727,6 @@ print_tokens :: proc()
     for tok in sim.instructions.data[i]
     {
       if tok.type == .NIL do continue
-
       fmt.print("{", tok.data, "|", tok.type , "} ")
     }
 

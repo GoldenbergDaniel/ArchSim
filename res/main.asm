@@ -5,8 +5,8 @@ $section .text
             mov r1, VAL_1
             mov r2, VAL_2
             cmp r2, r1
-            bgt R2_GREATER
+            bgt GREATER
             mov r0, 1
-            b CONTINUE
-R2_GREATER: mov r0, 2
+            b   CONTINUE
+GREATER:    mov r0, 2
 CONTINUE:   mov r0, r0

@@ -12,5 +12,8 @@ if "%MODE%"=="dev" set FLAGS=-o:none -use-separate-modules
 if "%MODE%"=="dbg" set FLAGS=-o:none -debug
 if "%MODE%"=="rls" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
 
-set ODIN_ROOT=odin
-odin\odin.exe build %SRC% -out:%OUT% %FLAGS%
+if not exist out mkdir out
+pushd out
+  set ODIN_ROOT=..\odin
+  ..\odin\odin.exe build ..\%SRC% -out:%OUT% %FLAGS%
+popd
