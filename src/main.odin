@@ -102,16 +102,16 @@ main :: proc()
   fmt.print("Type [r] to run program or [s] to step next instruction.\n")
   fmt.print("Type [h] for a list of commands.\n\n")
 
-  perm_arena := rt.create_arena(rt.MIB * 8)
+  perm_arena := util.create_arena(util.MIB * 8)
   context.allocator = perm_arena.ally
-  temp_arena := rt.create_arena(rt.MIB * 8)
+  temp_arena := util.create_arena(util.MIB * 8)
   context.temp_allocator = temp_arena.ally
 
   src_file_path := "res/main.asm"
-  if len(os.args) > 1
-  {
-    src_file_path = os.args[1]
-  }
+  // if len(os.args) > 1
+  // {
+  //   src_file_path = os.args[1]
+  // }
 
   src_file, err := os.open(src_file_path)
   if err != 0
@@ -274,83 +274,102 @@ main :: proc()
   }
 
   // print_tokens()
+  // if true do return
 
   // Preprocess ----------------
-  for instruction_idx := 0; instruction_idx < sim.instructions.count; instruction_idx += 1
   {
-    instruction := sim.instructions.data[instruction_idx]
+    for instruction_idx := 0; 
+        instruction_idx < sim.instructions.count; 
+        instruction_idx += 1
     {
-      // Directives
-      if instruction[0].type == .DIRECTIVE
+      instruction := sim.instructions.data[instruction_idx]
       {
-        if len(instruction) < 3 do continue
-
-        switch instruction[0].data
+        // Directives
+        if instruction[0].type == .DIRECTIVE
         {
-          case "$define":
+          if len(instruction) < 3 do continue
+
+          switch instruction[0].data
           {
-            sim.symbol_table[instruction[1].data] = Number(str_to_int(instruction[2].data))
-          }
-          case "$section":
-          {
-            section := instruction[1].data
-            switch section
+            case "$define":
             {
-              case ".data": sim.data_section_pos = instruction_idx + 1
-              case ".text": sim.text_section_pos = instruction_idx + 1
-              case: {}
+              sim.symbol_table[instruction[1].data] = Number(str_to_int(instruction[2].data))
+            }
+            case "$section":
+            {
+              section := instruction[1].data
+              switch section
+              {
+                case ".data": sim.data_section_pos = instruction_idx + 1
+                case ".text": sim.text_section_pos = instruction_idx + 1
+                case: {}
+              }
             }
           }
         }
-      }
 
-      // Labels
-      if instruction[0].type == .IDENTIFIER && instruction[1].type == .COLON
-      {
-        sim.symbol_table[instruction[0].data] = Number(instruction_idx - sim.text_section_pos)
-      }
-    }    
+        // Labels
+        if instruction[0].type == .IDENTIFIER && instruction[1].type == .COLON
+        {
+          sim.symbol_table[instruction[0].data] = Number(instruction_idx - sim.text_section_pos)
+        }
+      }    
+    }
   }
 
   // Error check ----------------
-  for instruction_idx := sim.text_section_pos; 
-      instruction_idx < sim.instructions.count; 
-      instruction_idx += 1
   {
-    error: Error
-    instruction := sim.instructions.data[instruction_idx]
-
     // Syntax
-    if  instruction[0].line >= sim.text_section_pos && 
-        instruction[0].type == .IDENTIFIER && 
-        instruction[0].opcode_type == .NIL &&
-        instruction[1].type != .COLON
+    for instruction_idx := 0; 
+        instruction_idx < sim.instructions.count; 
+        instruction_idx += 1
     {
-      error = SyntaxError{
-        type = .MISSING_COLON,
-        line = instruction[0].line
+      error: Error
+      instruction := sim.instructions.data[instruction_idx]
+
+      if  instruction[0].line >= sim.text_section_pos && 
+          instruction[0].type == .IDENTIFIER && 
+          instruction[0].opcode_type == .NIL &&
+          instruction[1].type == .OPCODE
+      {
+        error = SyntaxError{
+          type = .MISSING_COLON,
+          line = instruction[0].line
+        }
+
+        break
       }
+
+      if resolve_error(error) do return
     }
 
-    if resolve_error(error) do return
-
-    // Opcode
-    for opcode in OPCODE_STRINGS
+    // Semantics
+    for instruction_idx := 0; 
+        instruction_idx < sim.instructions.count; 
+        instruction_idx += 1
     {
-      if instruction[0].data != opcode
+      error: Error
+      instruction := sim.instructions.data[instruction_idx]
+
+      if instruction_idx >= sim.text_section_pos
       {
-        error = TypeError{
-          line = instruction[0].line,
-          column = instruction[0].column,
-          token = instruction[0],
-          expected_type = .OPCODE,
-          actual_type = instruction[0].type
+        if instruction[0].opcode_type == .NIL && instruction[2].opcode_type == .NIL
+        {
+          error = TypeError{
+            line = instruction[0].line,
+            column = instruction[0].column,
+            token = instruction[0],
+            expected_type = .OPCODE,
+            actual_type = instruction[0].type
+          }
         }
       }
-    }
 
-    // if resolve_error(error) do return
+      if resolve_error(error) do return
+    }
   }
+
+  if true do return
 
   // Prompt user command ----------------
   for
@@ -765,5 +784,5 @@ pow_uint :: proc(base, exp: uint) -> uint
 import "core:fmt"
 import "core:os"
 
-import rt "root"
+import "util"
 import "term"

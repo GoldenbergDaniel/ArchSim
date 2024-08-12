@@ -42,28 +42,35 @@ OpcodeError :: struct
 
 resolve_error :: proc(error: Error) -> bool
 {
+  if error == nil do return false
+  
   term.color(.RED)
-
+  fmt.print("[ERROR]: ")
+  
   switch v in error
   {
     case SyntaxError:
     {
-      fmt.print("[ERROR]: ")
-      if v.type == .MISSING_COLON
+      #partial switch v.type
       {
-        fmt.printf("Missing colon after label on line %i.\n", v.line)
+        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", 
+                                        v.line)
       }
     }
-    case TypeError: {}
+    case TypeError:
+    {
+      fmt.printf("Type mismatch on line %i. Expected \'%s\', got \'%s\'.\n", 
+                 v.line, 
+                 v.expected_type, 
+                 v.actual_type)
+    }
     case OpcodeError: {}
     case bool: {}
   }
 
   term.color(.WHITE)
 
-  if error != nil do return true
-
-  return false
+  return true
 }
 
 import "core:fmt"
