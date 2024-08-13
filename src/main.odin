@@ -102,9 +102,9 @@ main :: proc()
   fmt.print("Type [r] to run program or [s] to step next instruction.\n")
   fmt.print("Type [h] for a list of commands.\n\n")
 
-  perm_arena := rt.create_arena(rt.MIB * 8)
+  perm_arena := root.create_arena(root.MIB * 8)
   context.allocator = perm_arena.ally
-  temp_arena := rt.create_arena(rt.MIB * 8)
+  temp_arena := root.create_arena(root.MIB * 8)
   context.temp_allocator = temp_arena.ally
 
   src_file_path := "res/main.asm"
@@ -762,8 +762,8 @@ pow_uint :: proc(base, exp: uint) -> uint
 
 // @Imports //////////////////////////////////////////////////////////////////////////////
 
+import "root"
+import "term"
+
 import "core:fmt"
 import "core:os"
-
-import rt "root"
-import "term"
