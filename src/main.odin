@@ -4,18 +4,19 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 32
 MAX_TOKENS_PER_LINE :: 8
 
-REGISTER_COUNT      :: 3
+REGISTER_COUNT :: 3
 
 Simulator :: struct
 {
+  should_quit: bool,
+  current_command: Command,
+  step_to_next: bool,
+
   instructions: InstructionStore,
   symbol_table: SymbolTable,
   data_section_pos: int,
   text_section_pos: int,
   branch_to_idx: int,
-
-  current_command: Command,
-  step_to_next: bool,
 
   registers: [REGISTER_COUNT]Number,
   cmp_flag: struct
@@ -83,28 +84,43 @@ sim: Simulator
 
 @(private="file")
 command_table: map[string]CommandType = {
-  "q"           = .QUIT,
-  "quit"        = .QUIT,
-  "h"           = .HELP,
-  "help"        = .HELP,
-  "r"           = .RUN,
-  "run"         = .RUN,
-  ""            = .STEP,
-  "s"           = .STEP,
-  "step"        = .STEP,
-  "bp"          = .SET_BREAK,
-  "breakpoint"  = .SET_BREAK,
+  "q"          = .QUIT,
+  "quit"       = .QUIT,
+  "h"          = .HELP,
+  "help"       = .HELP,
+  "r"          = .RUN,
+  "run"        = .RUN,
+  ""           = .STEP,
+  "s"          = .STEP,
+  "step"       = .STEP,
+  "bp"         = .SET_BREAK,
+  "breakpoint" = .SET_BREAK,
 }
+
+USE_GUI :: false
 
 main :: proc()
 {
-  fmt.print("======= ARCH SIM =======\n")
-  fmt.print("Type [r] to run program or [s] to step next instruction.\n")
-  fmt.print("Type [h] for a list of commands.\n\n")
+  when USE_GUI
+  {
+    sapp.run(sapp.Desc{
+      window_title = "ArchSim",
+      width = 900,
+      height = 600,
+      fullscreen = false,
+      init_cb = gfx_init,
+      event_cb = gfx_input,
+      frame_cb = gfx_frame,
+    })
 
-  perm_arena := root.create_arena(root.MIB * 8)
+    // if true do return
+  }
+
+  cli_print_welcome()
+
+  perm_arena := bs.create_arena(bs.MIB * 8)
   context.allocator = perm_arena.ally
-  temp_arena := root.create_arena(root.MIB * 8)
+  temp_arena := bs.create_arena(bs.MIB * 8)
   context.temp_allocator = temp_arena.ally
 
   src_file_path := "res/main.asm"
@@ -132,7 +148,7 @@ main :: proc()
     line_start, line_end: int
     for line_idx := 0; line_end < len(src_data); line_idx += 1
     {
-      line_end = next_line(src_data, line_start)
+      line_end = next_line_from_bytes(src_data, line_start)
 
       if line_start == line_end
       {
@@ -353,32 +369,12 @@ main :: proc()
   }
 
   // Prompt user command ----------------
-  for
+  for done: bool; !done;
   {
-    buf: [8]byte
-    fmt.print("> ")
-    input_len, _ := os.read(os.stdin, buf[:])
-    cmd_str := str_strip_crlf(string(buf[:input_len]))
-    command := command_from_string(cmd_str)
-
-    #partial switch command.type
-    {
-      case .QUIT: return
-      case .HELP: print_commands_list(); continue
-      case .RUN:  sim.step_to_next = false
-      case .STEP: sim.step_to_next = true
-      case:
-      {
-        term.color(.RED)
-        fmt.print("\nEnter a valid command.\n\n")
-        term.color(.WHITE)
-        continue
-      }
-    }
-    
-    fmt.print("\n")
-    break
+    done = cli_prompt_command()
   }
+
+  if sim.should_quit do return
 
   // Execute/Simulate ----------------
   for instruction_idx := sim.text_section_pos; 
@@ -386,7 +382,6 @@ main :: proc()
   {
     instruction := sim.instructions.data[instruction_idx]
     sim.branch_to_idx = instruction_idx + 1
-
 
     // Determine opcode and operand indices ----------------
     opcode: Token
@@ -534,71 +529,29 @@ main :: proc()
       return
     }
 
-    term.color(.GRAY)
-    fmt.print("Address: ")
-    term.color(.WHITE)
-    fmt.printf("%#X\n", instruction_idx - sim.text_section_pos)
-
-    term.color(.GRAY)
-    fmt.print("Next address: ")
-    term.color(.WHITE)
-    fmt.printf("%#X\n", sim.branch_to_idx - sim.text_section_pos)
-
-    term.color(.GRAY)
-    fmt.print("Instruction: ")
-    term.color(.WHITE)
-    for tok in instruction do fmt.print(tok.data, "")
-    fmt.print("\n")
-
-    term.color(.GRAY)
-    fmt.print("Registers:\n")
-    term.color(.WHITE)
-    for reg in 0..<REGISTER_COUNT
-    {
-      fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
-    }
+    cli_print_sim_result(instruction, instruction_idx)
 
     // Set next instruction to result of branch
     instruction_idx = sim.branch_to_idx
 
     if sim.step_to_next && instruction_idx < sim.instructions.count - 1
     {
-      // Prompt execution option ----------------
-      for true
+      // Prompt user command ----------------
+      for done: bool; !done;
       {
-        buf: [8]byte
-        fmt.print("\n> ")
-        input_len, _ := os.read(os.stdin, buf[:])
-        cmd_str := str_strip_crlf(string(buf[:input_len]))
-        command := command_from_string(cmd_str)
-
-        #partial switch command.type
-        {
-          case .QUIT: return
-          case .HELP: print_commands_list(); continue
-          case .RUN:  sim.step_to_next = false
-          case .STEP: sim.step_to_next = true
-          case:
-          {
-            term.color(.RED)
-            fmt.print("\nPlease enter a valid command.\n\n")
-            term.color(.WHITE)
-            continue
-          }
-        }
-        
-        fmt.print("\n")
-        break
+        done = cli_prompt_command()
       }
     }
     else
     {
       fmt.print("\n")
     }
+
+    if sim.should_quit do return
   }
 }
 
-next_line :: proc(buf: []byte, start: int) -> (end: int)
+next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
 {
   length := len(buf)
 
@@ -718,52 +671,12 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (result: Operand, 
   return result, err
 }
 
-// @Terminal /////////////////////////////////////////////////////////////////////////////
-
-print_tokens :: proc()
-{
-  for i in 0..<sim.instructions.count
-  {
-    for tok in sim.instructions.data[i]
-    {
-      if tok.type == .NIL do continue
-      fmt.print("{", tok.data, "|", tok.type , "} ")
-    }
-
-    fmt.print("\n")
-  }
-
-  fmt.println("\n")
-}
-
-print_commands_list :: proc()
-{
-  fmt.print("\n")
-  fmt.print("q, quit   :   quit sim\n")
-  fmt.print("h, help   :   print list of commands\n")
-  fmt.print("r, run    :   run program to breakpoint\n")
-  fmt.print("s, step   :   step to next line\n")
-  fmt.print("\n")
-}
-
-// @Math /////////////////////////////////////////////////////////////////////////////////
-
-pow_uint :: proc(base, exp: uint) -> uint
-{
-  result: uint = 1
-  
-  for i: uint; i < exp; i += 1
-  {
-    result *= base
-  }
-
-  return result
-}
-
 // @Imports //////////////////////////////////////////////////////////////////////////////
 
-import "root"
+import bs "basic"
 import "term"
 
 import "core:fmt"
 import "core:os"
+
+import sapp "ext:sokol/app"

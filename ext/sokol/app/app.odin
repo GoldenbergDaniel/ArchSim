@@ -7,7 +7,7 @@ import "core:c"
 SOKOL_DEBUG :: #config(SOKOL_DEBUG, ODIN_DEBUG)
 
 DEBUG :: #config(SOKOL_APP_DEBUG, SOKOL_DEBUG)
-USE_GL :: #config(SOKOL_USE_GL, false)
+USE_GL :: #config(SOKOL_USE_GL, true)
 USE_DLL :: #config(SOKOL_DLL, false)
 
 when ODIN_OS == .Windows {
@@ -24,8 +24,8 @@ when ODIN_OS == .Windows {
             when DEBUG { foreign import sokol_app_clib { "sokol_app_windows_x64_gl_debug.lib" } }
             else       { foreign import sokol_app_clib { "sokol_app_windows_x64_gl_release.lib" } }
         } else {
-            when DEBUG { foreign import sokol_app_clib { "sokol_app_windows_x64_d3d11_debug.lib" } }
-            else       { foreign import sokol_app_clib { "sokol_app_windows_x64_d3d11_release.lib" } }
+            when DEBUG { foreign import sokol_app_clib { "../sokol.lib" } }
+            else       { foreign import sokol_app_clib { "../sokol.lib" } }
         }
     }
 } else when ODIN_OS == .Darwin {

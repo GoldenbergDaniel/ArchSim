@@ -1,5 +1,7 @@
 package main
 
+// @String ///////////////////////////////////////////////////////////////////////////////
+
 str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 {
   result := make([]byte, len(str), allocator)
@@ -128,6 +130,20 @@ str_strip_crlf :: proc(str: string) -> string
   else if str_len >= 1 && str[str_len-1] == '\n'
   {
     result = str[:len(str)-1]
+  }
+
+  return result
+}
+
+// @Math /////////////////////////////////////////////////////////////////////////////////
+
+pow_uint :: proc(base, exp: uint) -> uint
+{
+  result: uint = 1
+  
+  for i: uint; i < exp; i += 1
+  {
+    result *= base
   }
 
   return result
