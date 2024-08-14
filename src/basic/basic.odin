@@ -1,4 +1,8 @@
+<<<<<<<< HEAD:src/basic/basic.odin
 package basic
+========
+package util
+>>>>>>>> 659cf4ad0cc164668eb98871b7315311e1a5e647:src/util/root.odin
 
 import runtime "base:runtime"
 import intrinsics "base:intrinsics"
