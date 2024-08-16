@@ -1,7 +1,7 @@
 package main
 
 MAX_SRC_BUF_BYTES   :: 1024
-MAX_LINES           :: 32
+MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
 REGISTER_COUNT :: 3
@@ -14,6 +14,7 @@ Simulator :: struct
 
   instructions: InstructionStore,
   symbol_table: SymbolTable,
+  breakpoints: BreakpointTable,
   data_section_pos: int,
   text_section_pos: int,
   branch_to_idx: int,
@@ -25,6 +26,9 @@ Simulator :: struct
     greater: bool,
   },
 }
+
+SymbolTable :: distinct map[string]Number
+BreakpointTable :: distinct [MAX_LINES]bool
 
 OpcodeType :: enum
 {
@@ -84,24 +88,22 @@ sim: Simulator
 
 @(private="file")
 command_table: map[string]CommandType = {
-  "q"          = .QUIT,
-  "quit"       = .QUIT,
-  "h"          = .HELP,
-  "help"       = .HELP,
-  "r"          = .RUN,
-  "run"        = .RUN,
-  ""           = .STEP,
-  "s"          = .STEP,
-  "step"       = .STEP,
-  "bp"         = .SET_BREAK,
-  "breakpoint" = .SET_BREAK,
+  "q"     = .QUIT,
+  "quit"  = .QUIT,
+  "h"     = .HELP,
+  "help"  = .HELP,
+  "r"     = .CONTINUE,
+  "run"   = .CONTINUE,
+  ""      = .STEP,
+  "s"     = .STEP,
+  "step"  = .STEP,
+  "b"     = .BREAKPOINT,
+  "break" = .BREAKPOINT,
 }
-
-USE_GUI :: false
 
 main :: proc()
 {
-  when USE_GUI
+  when false
   {
     sapp.run(sapp.Desc{
       window_title = "ArchSim",
@@ -115,19 +117,19 @@ main :: proc()
 
     // if true do return
   }
-
+  
   cli_print_welcome()
   
-  perm_arena := util.create_arena(util.MIB * 8)
+  perm_arena := basic.create_arena(basic.MIB * 8)
   context.allocator = perm_arena.ally
-  temp_arena := util.create_arena(util.MIB * 8)
+  temp_arena := basic.create_arena(basic.MIB * 8)
   context.temp_allocator = temp_arena.ally
 
   src_file_path := "res/main.asm"
-  // if len(os.args) > 1
-  // {
-  //   src_file_path = os.args[1]
-  // }
+  if len(os.args) > 1
+  {
+    src_file_path = os.args[1]
+  }
 
   src_file, err := os.open(src_file_path)
   if err != 0
@@ -290,7 +292,6 @@ main :: proc()
   }
 
   // print_tokens()
-  // if true do return
 
   // Preprocess ----------------
   {
@@ -340,7 +341,7 @@ main :: proc()
         instruction_idx < sim.instructions.count; 
         instruction_idx += 1
     {
-      error: Error
+      error: ParserError
       instruction := sim.instructions.data[instruction_idx]
 
       if  instruction[0].line >= sim.text_section_pos && 
@@ -356,7 +357,7 @@ main :: proc()
         break
       }
 
-      if resolve_error(error) do return
+      if resolve_parser_error(error) do return
     }
 
     // Semantics
@@ -364,7 +365,7 @@ main :: proc()
         instruction_idx < sim.instructions.count; 
         instruction_idx += 1
     {
-      error: Error
+      error: ParserError
       instruction := sim.instructions.data[instruction_idx]
 
       if instruction_idx >= sim.text_section_pos
@@ -381,24 +382,31 @@ main :: proc()
         }
       }
 
-      if resolve_error(error) do return
+      if resolve_parser_error(error) do return
     }
   }
 
-  if true do return
-
-  // Prompt user command ----------------
-  for done: bool; !done;
-  {
-    done = cli_prompt_command()
-  }
-
-  if sim.should_quit do return
+  sim.step_to_next = true
 
   // Execute/Simulate ----------------
-  for instruction_idx := sim.text_section_pos; 
-      instruction_idx < sim.instructions.count;
+  for instruction_idx := sim.text_section_pos; instruction_idx < sim.instructions.count;
   {
+    if sim.breakpoints[instruction_idx]
+    {
+      sim.step_to_next = true
+    }
+
+    // Prompt user command ----------------
+    if sim.step_to_next && instruction_idx < sim.instructions.count - 1
+    {
+      for done: bool; !done;
+      {
+        done = cli_prompt_command()
+      }
+    }
+
+    if sim.should_quit do return
+
     instruction := sim.instructions.data[instruction_idx]
     sim.branch_to_idx = instruction_idx + 1
 
@@ -553,20 +561,10 @@ main :: proc()
     // Set next instruction to result of branch
     instruction_idx = sim.branch_to_idx
 
-    if sim.step_to_next && instruction_idx < sim.instructions.count - 1
-    {
-      // Prompt user command ----------------
-      for done: bool; !done;
-      {
-        done = cli_prompt_command()
-      }
-    }
-    else
+    if !(sim.step_to_next && instruction_idx < sim.instructions.count - 1)
     {
       fmt.print("\n")
     }
-
-    if sim.should_quit do return
   }
 }
 
@@ -590,7 +588,7 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
 Command :: struct
 {
   type: CommandType,
-  run_to: int,
+  args: [3]string,
 }
 
 CommandType :: enum
@@ -599,18 +597,44 @@ CommandType :: enum
 
   QUIT,
   HELP,
-  RUN,
-  RUN_TO,
+  CONTINUE,
   STEP,
-  SET_BREAK,
+  BREAKPOINT,
 }
 
-command_from_string :: proc(str: string) -> Command
+// NOTE(dg): Expects a string without leading whitespace
+command_from_string :: proc(str: string) -> (Command, CLI_Error)
 {
   result: Command
-  result.type = command_table[str]
-  
-  return result
+  error: CLI_Error
+  length := len(str)
+
+  if length == 0
+  {
+    return Command{type=.STEP}, nil
+  }
+
+  start, end: int
+  for i := 0; i <= 3 && end < length; i += 1
+  {
+    end = str_find_char(str, ' ', start)
+    if end == -1 do end = length
+
+    substr := str[start:end]
+    
+    if i == 0
+    {
+      result.type = command_table[substr]
+    }
+    else
+    {
+      result.args[i-1] = substr
+    }
+
+    start = end + 1
+  }
+
+  return result, error
 }
 
 // @Token ////////////////////////////////////////////////////////////////////////////////
@@ -644,8 +668,6 @@ InstructionStore :: struct
   data: []Instruction,
   count: int,
 }
-
-SymbolTable :: map[string]Number
 
 register_from_token :: proc(token: Token) -> (result: Register, err: bool)
 {
@@ -690,13 +712,85 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (result: Operand, 
   return result, err
 }
 
-// @Imports //////////////////////////////////////////////////////////////////////////////
+// @ParserError //////////////////////////////////////////////////////////////////////////
 
+ParserError :: union
+{
+  SyntaxError,
+  TypeError,
+  OpcodeError,
+}
+
+SyntaxError :: struct
+{
+  type: SyntaxErrorType,
+  line: int,
+  column: int,
+  token: Token,
+}
+
+SyntaxErrorType :: enum
+{
+  MISSING_IDENTIFIER,
+  MISSING_LITERAL,
+  MISSING_COLON,
+  UNIDENTIFIED_IDENTIFIER,
+}
+
+TypeError :: struct
+{
+  line: int,
+  column: int,
+  expected_type: TokenType,
+  actual_type: TokenType,
+  token: Token,
+}
+
+OpcodeError :: struct
+{
+  line: int,
+  column: int,
+  token: Token,
+}
+
+resolve_parser_error :: proc(error: ParserError) -> bool
+{
+  if error == nil do return false
+  
+  term.color(.RED)
+  fmt.print("[PARSER ERROR]: ")
+  
+  switch v in error
+  {
+    case SyntaxError:
+    {
+      #partial switch v.type
+      {
+        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", 
+                                        v.line)
+      }
+    }
+    case TypeError:
+    {
+      fmt.printf("Type mismatch on line %i. Expected \'%s\', got \'%s\'.\n", 
+                 v.line, 
+                 v.expected_type, 
+                 v.actual_type)
+    }
+    case OpcodeError: {}
+  }
+
+  term.color(.WHITE)
+
+  return true
+}
+
+// @Imports //////////////////////////////////////////////////////////////////////////////
 
 import "core:fmt"
 import "core:os"
 
-import "util"
+import "basic"
 import "term"
 
-import sapp "ext:sokol/app"
+// import sapp "ext:sokol/app"

@@ -4,7 +4,15 @@ TODO
   [X] preprocessor (labels, variables, origin)
   [~] error checking
   [X] conditional branching (cmp)
-  [_] memory (ld, st)
-  [_] breakpoints
+  [_] memory (load/store)
+  [X] breakpoints
+  [_] standardize line/instruction index/address 
   [_] disk storage
   [_] assembler
+
+BREAKPOINTS
+  - to set:    break set X
+  - to remove: break rem X
+  - to peak:   break X
+  - to clear:  break clear
+  - to list:   break list

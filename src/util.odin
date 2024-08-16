@@ -76,8 +76,15 @@ str_get_number_base :: proc(str: string) -> int
   return result
 }
 
+str_is_numeric :: #force_inline proc(str: string) -> bool
+{
+  return str_is_bin(str) || str_is_dec(str) || str_is_hex(str)
+}
+
 str_to_int :: proc(str: string) -> int
 {
+  assert(str_is_numeric(str))
+
   result: int
 
   switch str_get_number_base(str)
@@ -133,6 +140,22 @@ str_strip_crlf :: proc(str: string) -> string
   }
 
   return result
+}
+
+str_find_char :: proc(str: string, chr: byte, begin := 0) -> (loc: int)
+{
+  loc = -1
+
+  for i in begin..<len(str)
+  {
+    if str[i] == chr
+    {
+      loc = i
+      break
+    }
+  }
+
+  return loc
 }
 
 // @Math /////////////////////////////////////////////////////////////////////////////////
