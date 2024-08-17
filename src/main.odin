@@ -12,9 +12,9 @@ Simulator :: struct
   current_command: Command,
   step_to_next: bool,
 
-  instructions: InstructionStore,
+  instructions: []Instruction,
+  line_count : int,
   symbol_table: SymbolTable,
-  breakpoints: BreakpointTable,
   data_section_pos: int,
   text_section_pos: int,
   branch_to_idx: int,
@@ -27,8 +27,8 @@ Simulator :: struct
   },
 }
 
-SymbolTable :: distinct map[string]Number
-BreakpointTable :: distinct [MAX_LINES]bool
+SymbolTable      :: distinct map[string]Number
+InstructionTable :: distinct [MAX_LINES]Instruction
 
 OpcodeType :: enum
 {
@@ -103,20 +103,20 @@ command_table: map[string]CommandType = {
 
 main :: proc()
 {
-  when false
-  {
-    sapp.run(sapp.Desc{
-      window_title = "ArchSim",
-      width = 900,
-      height = 600,
-      fullscreen = false,
-      init_cb = gfx_init,
-      event_cb = gfx_input,
-      frame_cb = gfx_frame,
-    })
+  // when false
+  // {
+  //   sapp.run(sapp.Desc{
+  //     window_title = "ArchSim",
+  //     width = 900,
+  //     height = 600,
+  //     fullscreen = false,
+  //     init_cb = gfx_init,
+  //     event_cb = gfx_input,
+  //     frame_cb = gfx_frame,
+  //   })
 
-    // if true do return
-  }
+  //   if true do return
+  // }
   
   cli_print_welcome()
   
@@ -143,12 +143,12 @@ main :: proc()
   src_size, _ := os.read(src_file, src_buf[:])
   src_data := src_buf[:src_size]
 
-  sim.instructions.data = make([][]Token, MAX_LINES)
+  sim.instructions = make([]Instruction, MAX_LINES)
 
   // Tokenize ----------------
   {
     line_start, line_end: int
-    for line_idx := 0; line_end < len(src_data); line_idx += 1
+    for line_num := 0; line_end < len(src_data); line_num += 1
     {
       line_end = next_line_from_bytes(src_data, line_start)
 
@@ -159,11 +159,11 @@ main :: proc()
         else do continue
       }
       
-      sim.instructions.data[sim.instructions.count] = make(Instruction, MAX_TOKENS_PER_LINE)
+      sim.instructions[line_num].tokens = make([]Token, MAX_TOKENS_PER_LINE)
       {
         line_bytes := src_data[line_start:line_end]
 
-        line_tokens := sim.instructions.data[sim.instructions.count]
+        current_line := sim.instructions[line_num]
         token_cnt: int
 
         Tokenizer :: struct { pos, end: int }
@@ -231,8 +231,8 @@ main :: proc()
             buf_str_lower := str_to_lower(buf_str)
             if buf_str_lower == op_str
             {
-              line_tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
-              line_tokens[token_cnt].opcode_type = op_type
+              current_line.tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+              current_line.tokens[token_cnt].opcode_type = op_type
               token_cnt += 1
               continue tokenizer_loop
             }
@@ -243,7 +243,7 @@ main :: proc()
           // Tokenize number
           if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
           {
-            line_tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+            current_line.tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -255,7 +255,7 @@ main :: proc()
             
             if buf_str == ":" || buf_str == "="
             {
-              line_tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
+              current_line.tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
               token_cnt += 1
               continue tokenizer_loop
             }
@@ -264,29 +264,27 @@ main :: proc()
           // Tokenize directive
           if buf_str[0] == '$'
           {
-            line_tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+            current_line.tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
             token_cnt += 1
             continue tokenizer_loop
           }
 
           // Tokenize identifier
           {
-            line_tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+            current_line.tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
             token_cnt += 1
             continue tokenizer_loop
           }
         }
-
-        sim.instructions.data[line_idx] = line_tokens[:token_cnt]
       }
 
-      sim.instructions.count += 1
       line_start = line_end + 1
+      sim.line_count = line_num + 1
       
-      for &instruction, i in sim.instructions.data[sim.instructions.count]
+      for &token, i in sim.instructions[sim.line_count].tokens
       {
-        instruction.line = line_idx + 1
-        instruction.column = i
+        token.line = line_num + 1
+        token.column = i
       }
     }
   }
@@ -295,63 +293,63 @@ main :: proc()
 
   // Preprocess ----------------
   {
-    for instruction_idx := 0; 
-        instruction_idx < sim.instructions.count; 
-        instruction_idx += 1
+    for line_num := 0; line_num < sim.line_count; line_num += 1
     {
-      instruction := sim.instructions.data[instruction_idx]
-      {
-        // Directives
-        if instruction[0].type == .DIRECTIVE
-        {
-          if len(instruction) < 3 do continue
+      if sim.instructions[line_num].tokens == nil do continue
+      
+      instruction := sim.instructions[line_num]
 
-          switch instruction[0].data
+      // Directives
+      if instruction.tokens[0].type == .DIRECTIVE
+      {
+        if len(instruction.tokens) < 2 do continue
+
+        switch instruction.tokens[0].data
+        {
+          case "$define":
           {
-            case "$define":
+            val := Number(str_to_int(instruction.tokens[2].data))
+            sim.symbol_table[instruction.tokens[1].data] = val
+          }
+          case "$section":
+          {
+            section := instruction.tokens[1].data
+            switch section
             {
-              sim.symbol_table[instruction[1].data] = Number(str_to_int(instruction[2].data))
-            }
-            case "$section":
-            {
-              section := instruction[1].data
-              switch section
-              {
-                case ".data": sim.data_section_pos = instruction_idx + 1
-                case ".text": sim.text_section_pos = instruction_idx + 1
-                case: {}
-              }
+              case ".data": sim.data_section_pos = line_num + 1
+              case ".text": sim.text_section_pos = line_num + 1
+              case: {}
             }
           }
         }
+      }
 
-        // Labels
-        if instruction[0].type == .IDENTIFIER && instruction[1].type == .COLON
-        {
-          sim.symbol_table[instruction[0].data] = Number(instruction_idx - sim.text_section_pos)
-        }
-      }    
+      // Labels
+      if instruction.tokens[0].type == .IDENTIFIER && instruction.tokens[1].type == .COLON
+      {
+        sim.symbol_table[instruction.tokens[0].data] = Number(line_num)
+      }
     }
   }
 
   // Error check ----------------
   {
     // Syntax
-    for instruction_idx := 0; 
-        instruction_idx < sim.instructions.count; 
-        instruction_idx += 1
+    for line_num := 0; line_num < sim.line_count; line_num += 1
     {
-      error: ParserError
-      instruction := sim.instructions.data[instruction_idx]
+      if sim.instructions[line_num].tokens == nil do continue
 
-      if  instruction[0].line >= sim.text_section_pos && 
-          instruction[0].type == .IDENTIFIER && 
-          instruction[0].opcode_type == .NIL &&
-          instruction[1].type == .OPCODE
+      error: ParserError
+      instruction := sim.instructions[line_num]
+
+      if  instruction.tokens[0].line >= sim.text_section_pos && 
+          instruction.tokens[0].type == .IDENTIFIER && 
+          instruction.tokens[0].opcode_type == .NIL &&
+          instruction.tokens[1].type == .OPCODE
       {
         error = SyntaxError{
           type = .MISSING_COLON,
-          line = instruction[0].line
+          line = instruction.tokens[0].line
         }
 
         break
@@ -361,23 +359,23 @@ main :: proc()
     }
 
     // Semantics
-    for instruction_idx := 0; 
-        instruction_idx < sim.instructions.count; 
-        instruction_idx += 1
+    for line_num := 0; line_num < sim.line_count; line_num += 1
     {
-      error: ParserError
-      instruction := sim.instructions.data[instruction_idx]
+      if sim.instructions[line_num].tokens == nil do continue
 
-      if instruction_idx >= sim.text_section_pos
+      error: ParserError
+      instruction := sim.instructions[line_num]
+
+      if line_num >= sim.text_section_pos
       {
-        if instruction[0].opcode_type == .NIL && instruction[2].opcode_type == .NIL
+        if instruction.tokens[0].opcode_type == .NIL && instruction.tokens[2].opcode_type == .NIL
         {
           error = TypeError{
-            line = instruction[0].line,
-            column = instruction[0].column,
-            token = instruction[0],
+            line = instruction.tokens[0].line,
+            column = instruction.tokens[0].column,
+            token = instruction.tokens[0],
             expected_type = .OPCODE,
-            actual_type = instruction[0].type
+            actual_type = instruction.tokens[0].type
           }
         }
       }
@@ -388,16 +386,24 @@ main :: proc()
 
   sim.step_to_next = true
 
-  // Execute/Simulate ----------------
-  for instruction_idx := sim.text_section_pos; instruction_idx < sim.instructions.count;
+  // Execute ----------------
+  for line_num := sim.text_section_pos; line_num < sim.line_count;
   {
-    if sim.breakpoints[instruction_idx]
+    if sim.instructions[line_num].tokens == nil
+    {
+      line_num += 1
+      continue
+    }
+
+    instruction := sim.instructions[line_num]
+
+    if instruction.has_breakpoint
     {
       sim.step_to_next = true
     }
 
     // Prompt user command ----------------
-    if sim.step_to_next && instruction_idx < sim.instructions.count - 1
+    if sim.step_to_next && line_num < sim.line_count - 1
     {
       for done: bool; !done;
       {
@@ -407,26 +413,25 @@ main :: proc()
 
     if sim.should_quit do return
 
-    instruction := sim.instructions.data[instruction_idx]
-    sim.branch_to_idx = instruction_idx + 1
+    sim.branch_to_idx = line_num + 1
 
     // Determine opcode and operand indices ----------------
     opcode: Token
     operands: [3]Token
     {
-      if instruction[0].type == .OPCODE
+      if instruction.tokens[0].type == .OPCODE
       {
-        opcode = instruction[0]
-        operands[0] = instruction[1]
-        operands[1] = instruction[2]
-        operands[2] = instruction[3]
+        opcode = instruction.tokens[0]
+        operands[0] = instruction.tokens[1]
+        operands[1] = instruction.tokens[2]
+        operands[2] = instruction.tokens[3]
       }
-      else if instruction[2].type == .OPCODE
+      else if instruction.tokens[2].type == .OPCODE
       {
-        opcode = instruction[2]
-        operands[0] = instruction[3]
-        operands[1] = instruction[4]
-        operands[2] = instruction[5]
+        opcode = instruction.tokens[2]
+        operands[0] = instruction.tokens[3]
+        operands[1] = instruction.tokens[4]
+        operands[2] = instruction.tokens[5]
       }
     }
 
@@ -481,7 +486,7 @@ main :: proc()
           }
           
           result: Number
-          #partial switch instruction[0].opcode_type
+          #partial switch instruction.tokens[0].opcode_type
           {
             case .ADD: result = val1 + val2
             case .SUB: result = val1 - val2
@@ -551,17 +556,17 @@ main :: proc()
     if error
     {
       term.color(.RED)
-      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", instruction[0].line)
+      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", line_num+1)
       term.color(.WHITE)
       return
     }
 
-    cli_print_sim_result(instruction, instruction_idx)
+    cli_print_sim_result(instruction, line_num)
 
     // Set next instruction to result of branch
-    instruction_idx = sim.branch_to_idx
+    line_num = sim.branch_to_idx
 
-    if !(sim.step_to_next && instruction_idx < sim.instructions.count - 1)
+    if !(sim.step_to_next && line_num < sim.line_count - 1)
     {
       fmt.print("\n")
     }
@@ -661,12 +666,11 @@ TokenType :: enum
   EQUALS,
 }
 
-Instruction :: []Token
-
-InstructionStore :: struct
+Instruction :: struct
 {
-  data: []Instruction,
-  count: int,
+  tokens: []Token,
+  line_num: int,
+  has_breakpoint: bool,
 }
 
 register_from_token :: proc(token: Token) -> (result: Register, err: bool)
@@ -710,6 +714,32 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (result: Operand, 
   }
 
   return result, err
+}
+
+print_tokens :: proc()
+{
+  for i in 0..<sim.line_count
+  {
+    for tok in sim.instructions[i].tokens
+    {
+      if tok.type == .NIL do continue
+      fmt.print("{", tok.data, "|", tok.type , "} ")
+    }
+
+    fmt.print("\n")
+  }
+
+  fmt.print("\n")
+}
+
+print_tokens_at :: proc(line_num: int)
+{
+  for tok in sim.instructions[line_num].tokens
+  {
+    if tok.type == .NIL do continue
+    fmt.print("{", tok.data, "|", tok.type , "} ")
+  }
+  fmt.print("\n")
 }
 
 // @ParserError //////////////////////////////////////////////////////////////////////////

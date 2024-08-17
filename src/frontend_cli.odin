@@ -55,7 +55,7 @@ cli_prompt_command :: proc() -> bool
       {
         line_idx = str_to_int(command.args[0])
         
-        if sim.breakpoints[line_idx]
+        if sim.instructions[line_idx].has_breakpoint
         {
           term.color(.GRAY)
           fmt.printf("Breakpoint at line %i.\n", line_idx)
@@ -74,9 +74,9 @@ cli_prompt_command :: proc() -> bool
         {
           case "set":
           {
-            if sim.breakpoints[line_idx] == false
+            if sim.instructions[line_idx].has_breakpoint == false
             {
-              sim.breakpoints[line_idx] = true
+              sim.instructions[line_idx].has_breakpoint = true
 
               term.color(.GREEN)
               fmt.printf("Breakpoint set at line %i.\n", line_idx)
@@ -85,9 +85,9 @@ cli_prompt_command :: proc() -> bool
           }
           case "rem":
           {
-            if sim.breakpoints[line_idx] == true
+            if sim.instructions[line_idx].has_breakpoint == true
             {
-              sim.breakpoints[line_idx] = false
+              sim.instructions[line_idx].has_breakpoint = false
 
               term.color(.ORANGE)
               fmt.printf("Breakpoint removed at line %i.\n", line_idx)
@@ -98,7 +98,7 @@ cli_prompt_command :: proc() -> bool
           {
             for i in 0..<MAX_LINES
             {
-              sim.breakpoints[i] = false
+              sim.instructions[i].has_breakpoint = false
             }
 
             term.color(.ORANGE)
@@ -113,7 +113,7 @@ cli_prompt_command :: proc() -> bool
 
             for i in 0..<MAX_LINES
             {
-              if sim.breakpoints[i] == true
+              if sim.instructions[i].has_breakpoint == true
               {
                 fmt.printf(" %i\n", i)
               }
@@ -161,7 +161,7 @@ cli_print_sim_result :: proc(instruction: Instruction, idx: int)
   term.color(.GRAY)
   fmt.print("Instruction: ")
   term.color(.WHITE)
-  for tok in instruction do fmt.print(tok.data, "")
+  for tok in instruction.tokens do fmt.print(tok.data, "")
   fmt.print("\n")
 
   term.color(.GRAY)
@@ -171,22 +171,6 @@ cli_print_sim_result :: proc(instruction: Instruction, idx: int)
   {
     fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
   }
-}
-
-cli_print_tokens :: proc()
-{
-  for i in 0..<sim.instructions.count
-  {
-    for tok in sim.instructions.data[i]
-    {
-      if tok.type == .NIL do continue
-      fmt.print("{", tok.data, "|", tok.type , "} ")
-    }
-
-    fmt.print("\n")
-  }
-
-  fmt.println("\n")
 }
 
 cli_print_commands_list :: proc()
@@ -200,7 +184,7 @@ cli_print_commands_list :: proc()
   fmt.print("  clear     |   clear breakpoints\n")
   fmt.print("  list      |   list breakpoints\n")
   fmt.print("            |\n")
-  fmt.print(" s, step    |   step to next line\n")
+  fmt.print(" s, step    |   step to next instruction\n")
   fmt.print("            |\n")
   fmt.print(" r, run     |   continue to next breakpoint\n")
 }
