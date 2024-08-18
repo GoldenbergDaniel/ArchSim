@@ -58,33 +58,6 @@ OpcodeType :: enum
   BL,
 }
 
-// NOTE(dg): Shouldn't this be a string -> enum map?
-OPCODE_STRINGS :: [OpcodeType]string{
-  .NIL  = "",
-  
-  .MOV  = "mov",
-
-  .ADD  = "add",
-  .SUB  = "sub",
-  .SHL  = "shl",
-  .SHR  = "shr",
-
-  .CMP  = "cmp",
-  .CBZ  = "cbz",
-  .CBNZ = "cbnz",
-
-  .B    = "b",
-  .BEQ  = "beq",
-  .BNE  = "bne",
-  .BLT  = "blt",
-  .BGT  = "bgt",
-  .BLE  = "ble",
-  .BGE  = "bge",
-  .BMI  = "bmi",
-  .BPL  = "bpl",
-  .BL   = "bl",
-}
-
 RegisterID :: enum
 {
   NIL,
@@ -100,6 +73,32 @@ Operand :: union
 {
   Number,
   RegisterID,
+}
+
+opcode_table: map[string]OpcodeType = {
+  ""     = .NIL,
+
+  "mov"  = .MOV,
+
+  "add"  = .ADD,
+  "sub"  = .SUB,
+  "shl"  = .SHL,
+  "shr"  = .SHR,
+
+  "cmp"  = .CMP,
+  "cbz"  = .CBZ,
+  "cbnz" = .CBNZ,
+
+  "b"    = .B,
+  "beq"  = .BEQ,
+  "bne"  = .BNE,
+  "blt"  = .BLT,
+  "bgt"  = .BGT,
+  "ble"  = .BLE,
+  "bge"  = .BGE,
+  "bmi"  = .BMI,
+  "bpl"  = .BPL,
+  "bl"   = .BL,
 }
 
 sim: Simulator
@@ -229,19 +228,19 @@ main :: proc()
           if buf_str == "" || buf_str == "," do continue tokenizer_loop
 
           // Tokenize opcode
-          for op_str, op_type in OPCODE_STRINGS
-          {
+          { 
             buf_str_lower := str_to_lower(buf_str)
-            if buf_str_lower == op_str
+            op_type := opcode_table[buf_str_lower]
+            if op_type != .NIL
             {
               current_line.tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
               current_line.tokens[token_cnt].opcode_type = op_type
               token_cnt += 1
               continue tokenizer_loop
             }
-
-            free_all(context.temp_allocator)
           }
+
+          free_all(context.temp_allocator)
 
           // Tokenize number
           if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
