@@ -1,5 +1,20 @@
 package main
 
+@(private="file")
+command_table: map[string]CommandType = {
+  "q"     = .QUIT,
+  "quit"  = .QUIT,
+  "h"     = .HELP,
+  "help"  = .HELP,
+  "r"     = .CONTINUE,
+  "run"   = .CONTINUE,
+  ""      = .STEP,
+  "s"     = .STEP,
+  "step"  = .STEP,
+  "b"     = .BREAKPOINT,
+  "break" = .BREAKPOINT,
+}
+
 cli_prompt_command :: proc() -> bool
 {
   done: bool
@@ -11,7 +26,7 @@ cli_prompt_command :: proc() -> bool
   input_len, _ := os.read(os.stdin, buf[:])
   
   cmd_str := str_strip_crlf(string(buf[:input_len]))
-  command, err := command_from_string(cmd_str)
+  command, err := cli_command_from_string(cmd_str)
 
   if resolve_command_error(err)
   {
@@ -137,6 +152,41 @@ cli_prompt_command :: proc() -> bool
   return done
 }
 
+// NOTE(dg): Expects a string without leading whitespace
+cli_command_from_string :: proc(str: string) -> (Command, CLI_Error)
+{
+  result: Command
+  error: CLI_Error
+  length := len(str)
+
+  if length == 0
+  {
+    return Command{type=.STEP}, nil
+  }
+
+  start, end: int
+  for i := 0; i <= 3 && end < length; i += 1
+  {
+    end = str_find_char(str, ' ', start)
+    if end == -1 do end = length
+
+    substr := str[start:end]
+    
+    if i == 0
+    {
+      result.type = command_table[substr]
+    }
+    else
+    {
+      result.args[i-1] = substr
+    }
+
+    start = end + 1
+  }
+
+  return result, error
+}
+
 cli_print_welcome :: proc()
 {
   term.color(.GRAY)
@@ -167,9 +217,11 @@ cli_print_sim_result :: proc(instruction: Instruction, idx: int)
   term.color(.GRAY)
   fmt.print("Registers:\n")
   term.color(.WHITE)
-  for reg in 0..<REGISTER_COUNT
+  for reg in RegisterID
   {
-    fmt.printf(" r%i=%i\n", reg, sim.registers[reg])
+    if reg == .NIL || reg == .LR do continue
+
+    fmt.printf(" %s=%i\n", reg, sim.registers[reg])
   }
 }
 

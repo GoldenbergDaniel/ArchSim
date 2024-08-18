@@ -4,7 +4,7 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-REGISTER_COUNT :: 3
+Number :: distinct u8
 
 Simulator :: struct
 {
@@ -19,11 +19,12 @@ Simulator :: struct
   text_section_pos: int,
   branch_to_idx: int,
 
-  registers: [REGISTER_COUNT]Number,
-  cmp_flag: struct
+  registers: [RegisterID]Number,
+  status_flag: struct
   {
     equals: bool,
     greater: bool,
+    negative: bool,
   },
 }
 
@@ -42,6 +43,8 @@ OpcodeType :: enum
   SHR,
 
   CMP,
+  CBZ,
+  CBNZ,
 
   B,
   BEQ,
@@ -50,56 +53,56 @@ OpcodeType :: enum
   BGT,
   BLE,
   BGE,
+  BMI,
+  BPL,
+  BL,
 }
 
+// NOTE(dg): Shouldn't this be a string -> enum map?
 OPCODE_STRINGS :: [OpcodeType]string{
-  .NIL = "",
+  .NIL  = "",
   
-  .MOV = "mov",
+  .MOV  = "mov",
 
-  .ADD = "add",
-  .SUB = "sub",
-  .SHL = "shl",
-  .SHR = "shr",
+  .ADD  = "add",
+  .SUB  = "sub",
+  .SHL  = "shl",
+  .SHR  = "shr",
 
-  .CMP = "cmp",
+  .CMP  = "cmp",
+  .CBZ  = "cbz",
+  .CBNZ = "cbnz",
 
-  .B   = "b",
-  .BEQ = "beq",
-  .BNE = "bne",
-  .BLT = "blt",
-  .BGT = "bgt",
-  .BLE = "ble",
-  .BGE = "bge",
+  .B    = "b",
+  .BEQ  = "beq",
+  .BNE  = "bne",
+  .BLT  = "blt",
+  .BGT  = "bgt",
+  .BLE  = "ble",
+  .BGE  = "bge",
+  .BMI  = "bmi",
+  .BPL  = "bpl",
+  .BL   = "bl",
 }
 
-Number :: distinct u8
-Register :: distinct u8
+RegisterID :: enum
+{
+  NIL,
+
+  R0,
+  R1,
+  R2,
+  R3,
+  LR,
+}
 
 Operand :: union
 {
   Number,
-  Register,
+  RegisterID,
 }
-
-NIL_REGISTER :: 255
 
 sim: Simulator
-
-@(private="file")
-command_table: map[string]CommandType = {
-  "q"     = .QUIT,
-  "quit"  = .QUIT,
-  "h"     = .HELP,
-  "help"  = .HELP,
-  "r"     = .CONTINUE,
-  "run"   = .CONTINUE,
-  ""      = .STEP,
-  "s"     = .STEP,
-  "step"  = .STEP,
-  "b"     = .BREAKPOINT,
-  "break" = .BREAKPOINT,
-}
 
 main :: proc()
 {
@@ -119,7 +122,7 @@ main :: proc()
   // }
   
   cli_print_welcome()
-  
+
   perm_arena := basic.create_arena(basic.MIB * 8)
   context.allocator = perm_arena.ally
   temp_arena := basic.create_arena(basic.MIB * 8)
@@ -453,10 +456,10 @@ main :: proc()
           switch v in op1_reg
           {
             case Number:   val = v
-            case Register: val = sim.registers[v]
+            case RegisterID: val = sim.registers[v]
           }
 
-          sim.registers[dest_reg.(Register)] = val
+          sim.registers[dest_reg.(RegisterID)] = val
         }
       }
       case .ADD: fallthrough
@@ -476,13 +479,13 @@ main :: proc()
           switch v in op1_reg
           {
             case Number:   val1 = v
-            case Register: val1 = sim.registers[v]
+            case RegisterID: val1 = sim.registers[v]
           }
 
           switch v in op2_reg
           {
             case Number:   val2 = v
-            case Register: val2 = sim.registers[v]
+            case RegisterID: val2 = sim.registers[v]
           }
           
           result: Number
@@ -494,33 +497,49 @@ main :: proc()
             case .SHR: result = val1 >> val2
           }
 
-          sim.registers[dest_reg.(Register)] = result
+          sim.registers[dest_reg.(RegisterID)] = result
         }
       }
-      case .CMP:
+      case .CMP: fallthrough
+      case .CBZ: fallthrough
+      case .CBNZ:
       {
-        op1_reg, err0 := operand_from_operands(operands[:], 0)
-        op2_reg, err1 := operand_from_operands(operands[:], 1)
+        oper1, err0 := operand_from_operands(operands[:], 0)
+        oper2, err1 := operand_from_operands(operands[:], 1)
 
         error = err0 || err1
         if !error
         {
           val1, val2: Number
 
-          switch v in op1_reg
+          switch v in oper1
           {
             case Number:   val1 = v
-            case Register: val1 = sim.registers[v]
+            case RegisterID: val1 = sim.registers[v]
           }
 
-          switch v in op2_reg
+          switch v in oper2
           {
             case Number:   val2 = v
-            case Register: val2 = sim.registers[v]
+            case RegisterID: val2 = sim.registers[v]
           }
 
-          sim.cmp_flag.equals = val1 == val2
-          sim.cmp_flag.greater = val1 > val2
+          sim.status_flag.equals = val1 == val2
+          sim.status_flag.greater = val1 > val2
+          sim.status_flag.negative = val1 < 0 // NOTE(dg): This may be incorrect ARM
+
+          should_jump: bool
+          #partial switch opcode.opcode_type
+          {
+            case .CMP:  should_jump = false
+            case .CBZ:  should_jump = val1 == 0
+            case .CBNZ: should_jump = val1 != 0
+          }
+
+          if should_jump
+          {
+            sim.branch_to_idx = cast(int) oper2.(Number)
+          }
         }
       }
       case .B:   fallthrough
@@ -529,26 +548,40 @@ main :: proc()
       case .BLT: fallthrough
       case .BGT: fallthrough
       case .BLE: fallthrough
-      case .BGE:
+      case .BGE: fallthrough
+      case .BMI: fallthrough
+      case .BPL: fallthrough
+      case .BL:
       {
-        dest, err0 := operand_from_operands(operands[:], 0)
+        oper, err0 := operand_from_operands(operands[:], 0)
+        addr := cast(int) oper.(Number)
+
         error = err0
-
-        should_jump: bool
-        #partial switch opcode.opcode_type
+        if !error
         {
-          case .B:   should_jump = true
-          case .BEQ: should_jump = sim.cmp_flag.equals
-          case .BNE: should_jump = !sim.cmp_flag.equals
-          case .BLT: should_jump = !sim.cmp_flag.greater
-          case .BGT: should_jump = sim.cmp_flag.greater
-          case .BLE: should_jump = sim.cmp_flag.greater || sim.cmp_flag.equals
-          case .BGE: should_jump = sim.cmp_flag.greater || sim.cmp_flag.equals
-        }
+          should_jump: bool
+          #partial switch opcode.opcode_type
+          {
+            case .B:   should_jump = true
+            case .BEQ: should_jump = sim.status_flag.equals
+            case .BNE: should_jump = !sim.status_flag.equals
+            case .BLT: should_jump = !sim.status_flag.greater
+            case .BGT: should_jump = sim.status_flag.greater
+            case .BLE: should_jump = sim.status_flag.greater || sim.status_flag.equals
+            case .BGE: should_jump = sim.status_flag.greater || sim.status_flag.equals
+            case .BMI: should_jump = sim.status_flag.negative
+            case .BPL: should_jump = !sim.status_flag.negative
+            case .BL:
+            {
+              should_jump = true
+              sim.registers[.LR] = cast(Number) line_num + 1
+            }
+          }
 
-        if !error && should_jump
-        {
-          sim.branch_to_idx = cast(int) dest.(Number) + sim.text_section_pos
+          if should_jump
+          {
+            sim.branch_to_idx = addr
+          }
         }
       }
     }
@@ -607,41 +640,6 @@ CommandType :: enum
   BREAKPOINT,
 }
 
-// NOTE(dg): Expects a string without leading whitespace
-command_from_string :: proc(str: string) -> (Command, CLI_Error)
-{
-  result: Command
-  error: CLI_Error
-  length := len(str)
-
-  if length == 0
-  {
-    return Command{type=.STEP}, nil
-  }
-
-  start, end: int
-  for i := 0; i <= 3 && end < length; i += 1
-  {
-    end = str_find_char(str, ' ', start)
-    if end == -1 do end = length
-
-    substr := str[start:end]
-    
-    if i == 0
-    {
-      result.type = command_table[substr]
-    }
-    else
-    {
-      result.args[i-1] = substr
-    }
-
-    start = end + 1
-  }
-
-  return result, error
-}
-
 // @Token ////////////////////////////////////////////////////////////////////////////////
 
 Token :: struct
@@ -673,18 +671,15 @@ Instruction :: struct
   has_breakpoint: bool,
 }
 
-register_from_token :: proc(token: Token) -> (result: Register, err: bool)
+register_from_token :: proc(token: Token) -> (result: RegisterID, err: bool)
 {
   switch token.data
   {
-    case "r0": result = 0
-    case "r1": result = 1
-    case "r2": result = 2
-    case: 
-    {
-      result = NIL_REGISTER
-      err = true
-    }
+    case "r0": result = .R0
+    case "r1": result = .R1
+    case "r2": result = .R2
+    case "r3": result = .R3
+    case: err = true
   }
 
   return result, err
@@ -796,8 +791,7 @@ resolve_parser_error :: proc(error: ParserError) -> bool
     {
       #partial switch v.type
       {
-        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", 
-                                        v.line)
+        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", v.line)
       }
     }
     case TypeError:
