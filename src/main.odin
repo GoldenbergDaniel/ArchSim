@@ -4,7 +4,7 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-Number :: distinct u8
+Number :: distinct i64
 
 Simulator :: struct
 {
@@ -29,7 +29,7 @@ Simulator :: struct
 }
 
 SymbolTable      :: distinct map[string]Number
-InstructionTable :: distinct [MAX_LINES]Instruction
+InstructionTable :: distinct [MAX_LINES]Instruction                                      
 
 OpcodeType :: enum
 {
@@ -119,7 +119,7 @@ main :: proc()
 
   //   if true do return
   // }
-  
+
   cli_print_welcome()
 
   perm_arena := basic.create_arena(basic.MIB * 8)
@@ -165,7 +165,7 @@ main :: proc()
       {
         line_bytes := src_data[line_start:line_end]
 
-        current_line := sim.instructions[line_num]
+        line := sim.instructions[line_num]
         token_cnt: int
 
         Tokenizer :: struct { pos, end: int }
@@ -233,19 +233,19 @@ main :: proc()
             op_type := opcode_table[buf_str_lower]
             if op_type != .NIL
             {
-              current_line.tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
-              current_line.tokens[token_cnt].opcode_type = op_type
+              line.tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+              line.tokens[token_cnt].opcode_type = op_type
               token_cnt += 1
               continue tokenizer_loop
             }
-          }
 
-          free_all(context.temp_allocator)
+            free_all(context.temp_allocator)
+          }
 
           // Tokenize number
           if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
           {
-            current_line.tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+            line.tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -253,11 +253,11 @@ main :: proc()
           // Tokenize operator
           {
             @(static)
-            operator_table := [?]TokenType{':' = .COLON, '=' = .EQUALS}
+            operators := [?]TokenType{':' = .COLON, '=' = .EQUALS}
             
             if buf_str == ":" || buf_str == "="
             {
-              current_line.tokens[token_cnt] = Token{data=buf_str, type=operator_table[buf_str[0]]}
+              line.tokens[token_cnt] = Token{data=buf_str, type=operators[buf_str[0]]}
               token_cnt += 1
               continue tokenizer_loop
             }
@@ -266,14 +266,14 @@ main :: proc()
           // Tokenize directive
           if buf_str[0] == '$'
           {
-            current_line.tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+            line.tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
             token_cnt += 1
             continue tokenizer_loop
           }
 
           // Tokenize identifier
           {
-            current_line.tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+            line.tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -370,7 +370,8 @@ main :: proc()
 
       if line_num >= sim.text_section_pos
       {
-        if instruction.tokens[0].opcode_type == .NIL && instruction.tokens[2].opcode_type == .NIL
+        if instruction.tokens[0].opcode_type == .NIL && 
+           instruction.tokens[2].opcode_type == .NIL
         {
           error = TypeError{
             line = instruction.tokens[0].line,
@@ -492,8 +493,8 @@ main :: proc()
           {
             case .ADD: result = val1 + val2
             case .SUB: result = val1 - val2
-            case .SHL: result = val1 << val2
-            case .SHR: result = val1 >> val2
+            case .SHL: result = val1 << u64(val2)
+            case .SHR: result = val1 >> u64(val2)
           }
 
           sim.registers[dest_reg.(RegisterID)] = result
