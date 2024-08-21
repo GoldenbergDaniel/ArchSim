@@ -1,4 +1,4 @@
-package rt
+package basic
 
 import runtime "base:runtime"
 import intrinsics "base:intrinsics"

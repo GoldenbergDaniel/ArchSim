@@ -1,10 +1,19 @@
 TODO
   [X] binary and hex parsing
   [X] colored output
-  [~] preprocessor (labels, variables, origin)
-  [~] error handling
+  [X] preprocessor (labels, variables, origin)
+  [~] error checking
   [X] conditional branching (cmp)
-  [_] memory (ld, st)
-  [_] breakpoints
+  [X] br, bl, blr, cbz, cbnz 
+  [_] memory (load/store)
+  [_] standardize line/instruction index/address 
+  [X] breakpoints
   [_] disk storage
   [_] assembler
+
+BREAKPOINTS
+  - to set:    break set X
+  - to remove: break rem X
+  - to peak:   break X
+  - to clear:  break clear
+  - to list:   break list

@@ -4,13 +4,17 @@ setlocal
 set SRC=src
 set OUT=archsim.exe
 
-set MODE=dev
-if "%1%"=="d" set MODE=dbg
-if "%1%"=="r" set MODE=rls
+set KIND=dev
+if "%1%"=="d" set KIND=dbg
+if "%1%"=="r" set KIND=rls
 
-if "%MODE%"=="dev" set FLAGS=-o:none -use-separate-modules
-if "%MODE%"=="dbg" set FLAGS=-o:none -debug
-if "%MODE%"=="rls" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
+if "%KIND%"=="dev" set FLAGS=-o:none -use-separate-modules
+if "%KIND%"=="dbg" set FLAGS=-o:none -debug
+if "%KIND%"=="rls" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
 
+set MODE=build
+if "%KIND%"=="dev" set MODE=run
+
+if not exist out mkdir out
 set ODIN_ROOT=odin
-odin\odin.exe build %SRC% -out:%OUT% %FLAGS%
+odin\odin.exe %MODE% %SRC% -out:out/%OUT% %FLAGS% -collection:ext=ext/

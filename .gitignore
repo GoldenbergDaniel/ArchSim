@@ -3,7 +3,4 @@
 odin/LLVM-C.dll
 odin/libs/libLLVM.dylib
 
-archsim
-archsim.exe
-archsim.pdb
-archsim.rdi
+out/

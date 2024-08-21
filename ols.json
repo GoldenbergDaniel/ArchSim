@@ -1,6 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/DanielGavin/ols/master/misc/ols.schema.json",
-  "collections": [],
+  "collections": [
+    {
+      "name": "ext",
+      "path": "ext"
+    }
+  ],
   "enable_document_symbols": true,
   "enable_semantic_tokens": true,
   "enable_format": false,
@@ -11,6 +16,6 @@
   "checker_args": "-vet",
   "profiles":
   [
-    {"name": "main", "os": "darwin", "checker_path": ["src", "src/root", "src/term"]}
+    {"name": "main", "checker_path": ["src"]}
   ]
 }

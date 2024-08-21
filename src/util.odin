@@ -1,5 +1,7 @@
 package main
 
+// @String ///////////////////////////////////////////////////////////////////////////////
+
 str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 {
   result := make([]byte, len(str), allocator)
@@ -74,8 +76,15 @@ str_get_number_base :: proc(str: string) -> int
   return result
 }
 
+str_is_numeric :: #force_inline proc(str: string) -> bool
+{
+  return str_is_bin(str) || str_is_dec(str) || str_is_hex(str)
+}
+
 str_to_int :: proc(str: string) -> int
 {
+  assert(str_is_numeric(str))
+
   result: int
 
   switch str_get_number_base(str)
@@ -128,6 +137,36 @@ str_strip_crlf :: proc(str: string) -> string
   else if str_len >= 1 && str[str_len-1] == '\n'
   {
     result = str[:len(str)-1]
+  }
+
+  return result
+}
+
+str_find_char :: proc(str: string, chr: byte, begin := 0) -> (loc: int)
+{
+  loc = -1
+
+  for i in begin..<len(str)
+  {
+    if str[i] == chr
+    {
+      loc = i
+      break
+    }
+  }
+
+  return loc
+}
+
+// @Math /////////////////////////////////////////////////////////////////////////////////
+
+pow_uint :: proc(base, exp: uint) -> uint
+{
+  result: uint = 1
+  
+  for i: uint; i < exp; i += 1
+  {
+    result *= base
   }
 
   return result
