@@ -1,7 +1,24 @@
 package main
 
+CLI_Command :: struct
+{
+  type: CLI_CommandType,
+  args: [3]string,
+}
+
+CLI_CommandType :: enum
+{
+  NONE,
+
+  QUIT,
+  HELP,
+  CONTINUE,
+  STEP,
+  BREAKPOINT,
+}
+
 @(private="file")
-command_table: map[string]CommandType = {
+command_table: map[string]CLI_CommandType = {
   "q"     = .QUIT,
   "quit"  = .QUIT,
   "h"     = .HELP,
@@ -153,15 +170,15 @@ cli_prompt_command :: proc() -> bool
 }
 
 // NOTE(dg): Expects a string without leading whitespace
-cli_command_from_string :: proc(str: string) -> (Command, CLI_Error)
+cli_command_from_string :: proc(str: string) -> (CLI_Command, CLI_Error)
 {
-  result: Command
+  result: CLI_Command
   error: CLI_Error
   length := len(str)
 
   if length == 0
   {
-    return Command{type=.STEP}, nil
+    return CLI_Command{type=.STEP}, nil
   }
 
   start, end: int
@@ -241,7 +258,7 @@ cli_print_commands_list :: proc()
   fmt.print(" r, run     |   continue to next breakpoint\n")
 }
 
-// @Error ////////////////////////////////////////////////////////////////////////////////
+// @Error ///////////////////////////////////////////////////////////////////////////////
 
 CLI_Error :: union
 {

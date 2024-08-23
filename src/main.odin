@@ -4,12 +4,12 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-Number :: distinct i64
+Address :: distinct u64
+Number  :: distinct i64
 
 Simulator :: struct
 {
   should_quit: bool,
-  current_command: Command,
   step_to_next: bool,
 
   instructions: []Instruction,
@@ -22,7 +22,7 @@ Simulator :: struct
   registers: [RegisterID]Number,
   status_flag: struct
   {
-    equals: bool,
+    equal: bool,
     greater: bool,
     negative: bool,
   },
@@ -105,20 +105,17 @@ sim: Simulator
 
 main :: proc()
 {
-  // when false
-  // {
-  //   sapp.run(sapp.Desc{
-  //     window_title = "ArchSim",
-  //     width = 900,
-  //     height = 600,
-  //     fullscreen = false,
-  //     init_cb = gfx_init,
-  //     event_cb = gfx_input,
-  //     frame_cb = gfx_frame,
-  //   })
+  // sapp.run(sapp.Desc{
+  //   window_title = "ArchSim",
+  //   width = 900,
+  //   height = 600,
+  //   fullscreen = false,
+  //   init_cb = gfx_init,
+  //   event_cb = gfx_input,
+  //   frame_cb = gfx_frame,
+  // })
 
-  //   if true do return
-  // }
+  // if true do return
 
   cli_print_welcome()
 
@@ -150,7 +147,7 @@ main :: proc()
   // Tokenize ----------------
   {
     line_start, line_end: int
-    for line_num := 0; line_end < len(src_data); line_num += 1
+    for line_idx := 0; line_end < len(src_data); line_idx += 1
     {
       line_end = next_line_from_bytes(src_data, line_start)
 
@@ -160,12 +157,34 @@ main :: proc()
         if line_end == len(src_data) - 1 do break
         else do continue
       }
-      
-      sim.instructions[line_num].tokens = make([]Token, MAX_TOKENS_PER_LINE)
+
+      // Skip lines containing only whitespace
       {
+        is_whitespace := true
         line_bytes := src_data[line_start:line_end]
 
-        line := sim.instructions[line_num]
+        for b in line_bytes
+        {
+          if b != ' ' && b != '\n' && b != '\r' && b != '\t'
+          {
+            is_whitespace = false
+            break
+          }
+        }
+
+        if is_whitespace
+        {
+          line_start = line_end + 1
+          continue
+        }
+      }
+
+      sim.instructions[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE)
+      
+      // Tokenize line
+      {
+        line_bytes := src_data[line_start:line_end]
+        line := sim.instructions[line_idx]
         token_cnt: int
 
         Tokenizer :: struct { pos, end: int }
@@ -281,11 +300,11 @@ main :: proc()
       }
 
       line_start = line_end + 1
-      sim.line_count = line_num + 1
+      sim.line_count = line_idx + 1
       
       for &token, i in sim.instructions[sim.line_count].tokens
       {
-        token.line = line_num + 1
+        token.line = line_idx + 1
         token.column = i
       }
     }
@@ -327,7 +346,8 @@ main :: proc()
       }
 
       // Labels
-      if instruction.tokens[0].type == .IDENTIFIER && instruction.tokens[1].type == .COLON
+      if instruction.tokens[0].type == .IDENTIFIER && 
+         instruction.tokens[1].type == .COLON
       {
         sim.symbol_table[instruction.tokens[0].data] = Number(line_num)
       }
@@ -452,7 +472,6 @@ main :: proc()
         if !error
         {
           val: Number
-
           switch v in op1_reg
           {
             case Number:   val = v
@@ -475,16 +494,16 @@ main :: proc()
         if !error
         {
           val1, val2: Number
-
+          
           switch v in op1_reg
           {
-            case Number:   val1 = v
+            case Number:     val1 = v
             case RegisterID: val1 = sim.registers[v]
           }
 
           switch v in op2_reg
           {
-            case Number:   val2 = v
+            case Number:     val2 = v
             case RegisterID: val2 = sim.registers[v]
           }
           
@@ -524,9 +543,10 @@ main :: proc()
             case RegisterID: val2 = sim.registers[v]
           }
 
-          sim.status_flag.equals = val1 == val2
+          sim.status_flag.equal = val1 == val2
           sim.status_flag.greater = val1 > val2
-          sim.status_flag.negative = val1 < 0 // NOTE(dg): This may be incorrect ARM
+          // NOTE(dg): This may be incorrect ARM
+          sim.status_flag.negative = val1 < 0
 
           should_jump: bool
           #partial switch opcode.opcode_type
@@ -563,12 +583,12 @@ main :: proc()
           #partial switch opcode.opcode_type
           {
             case .B:   should_jump = true
-            case .BEQ: should_jump = sim.status_flag.equals
-            case .BNE: should_jump = !sim.status_flag.equals
+            case .BEQ: should_jump = sim.status_flag.equal
+            case .BNE: should_jump = !sim.status_flag.equal
             case .BLT: should_jump = !sim.status_flag.greater
             case .BGT: should_jump = sim.status_flag.greater
-            case .BLE: should_jump = sim.status_flag.greater || sim.status_flag.equals
-            case .BGE: should_jump = sim.status_flag.greater || sim.status_flag.equals
+            case .BLE: should_jump = sim.status_flag.greater || sim.status_flag.equal
+            case .BGE: should_jump = sim.status_flag.greater || sim.status_flag.equal
             case .BMI: should_jump = sim.status_flag.negative
             case .BPL: should_jump = !sim.status_flag.negative
             case .BL:
@@ -623,24 +643,32 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   return end
 }
 
-Command :: struct
+instruction_index_from_line_number :: proc(line_num: int) -> int
 {
-  type: CommandType,
-  args: [3]string,
+  result: int
+
+  for instruction in sim.instructions
+  {
+    if instruction.tokens != nil
+    {
+      
+    }
+  }
+
+  return result
 }
 
-CommandType :: enum
+address_from_line_number :: proc(line_num: int) -> Address
 {
-  NONE,
+  result: Address
 
-  QUIT,
-  HELP,
-  CONTINUE,
-  STEP,
-  BREAKPOINT,
+  // NOTE(dg): This should use instruction index, not line number
+  result = cast(Address) (line_num - sim.text_section_pos) * 4
+
+  return result
 }
 
-// @Token ////////////////////////////////////////////////////////////////////////////////
+// @Token ///////////////////////////////////////////////////////////////////////////////
 
 Token :: struct
 {
@@ -671,8 +699,11 @@ Instruction :: struct
   has_breakpoint: bool,
 }
 
-register_from_token :: proc(token: Token) -> (result: RegisterID, err: bool)
+register_from_token :: proc(token: Token) -> (RegisterID, bool)
 {
+  result: RegisterID
+  err: bool
+
   switch token.data
   {
     case "r0": result = .R0
@@ -685,8 +716,11 @@ register_from_token :: proc(token: Token) -> (result: RegisterID, err: bool)
   return result, err
 }
 
-operand_from_operands :: proc(operands: []Token, idx: int) -> (result: Operand, err: bool)
+operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
 {
+  result: Operand
+  err: bool
+
   token := operands[idx]
 
   if token.type == .NUMBER
@@ -718,7 +752,7 @@ print_tokens :: proc()
     for tok in sim.instructions[i].tokens
     {
       if tok.type == .NIL do continue
-      fmt.print("{", tok.data, "|", tok.type , "} ")
+      fmt.print("{", tok.data, "|", tok.type , "}", "")
     }
 
     fmt.print("\n")
@@ -732,12 +766,13 @@ print_tokens_at :: proc(line_num: int)
   for tok in sim.instructions[line_num].tokens
   {
     if tok.type == .NIL do continue
-    fmt.print("{", tok.data, "|", tok.type , "} ")
+    fmt.print("{", tok.data, "|", tok.type , "}", "")
   }
+  
   fmt.print("\n")
 }
 
-// @ParserError //////////////////////////////////////////////////////////////////////////
+// @ParserError /////////////////////////////////////////////////////////////////////////
 
 ParserError :: union
 {
@@ -789,9 +824,13 @@ resolve_parser_error :: proc(error: ParserError) -> bool
   {
     case SyntaxError:
     {
-      #partial switch v.type
+      switch v.type
       {
-        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", v.line)
+        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", 
+                                        v.line)
+        case .MISSING_IDENTIFIER: fmt.printf("")
+        case .MISSING_LITERAL: fmt.printf("")
+        case .UNIDENTIFIED_IDENTIFIER: fmt.printf("")
       }
     }
     case TypeError:
@@ -809,7 +848,7 @@ resolve_parser_error :: proc(error: ParserError) -> bool
   return true
 }
 
-// @Imports //////////////////////////////////////////////////////////////////////////////
+// @Imports /////////////////////////////////////////////////////////////////////////////
 
 import "core:fmt"
 import "core:os"

@@ -4,9 +4,9 @@ TODO
   [X] preprocessor (labels, variables, origin)
   [~] error checking
   [X] conditional branching (cmp)
-  [X] br, bl, blr, cbz, cbnz 
+  [X] bl, cbz, cbnz 
+  [_] standardize line/instruction index/address (br, blr)
   [_] memory (load/store)
-  [_] standardize line/instruction index/address 
   [X] breakpoints
   [_] disk storage
   [_] assembler
