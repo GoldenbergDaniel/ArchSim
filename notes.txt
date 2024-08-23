@@ -5,7 +5,7 @@ TODO
   [~] error checking
   [X] conditional branching (cmp)
   [X] bl, cbz, cbnz 
-  [_] standardize line/instruction index/address (br, blr)
+  [X] standardize line/instruction index/address (br, blr)
   [_] memory (load/store)
   [X] breakpoints
   [_] disk storage

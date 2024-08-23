@@ -1,13 +1,7 @@
-$define VAL_1 8
-$define VAL_2 16
+$define ADDRESS 0x100C
 
 $section .text
-            mov  r1, VAL_1
-            mov  r2, VAL_2
-            cbz r1, CONTINUE
-            cmp  r2, r1
-            bgt  GREATER
-            mov  r0, 1
-            b    CONTINUE
-GREATER:    mov  r0, 2
-CONTINUE:   mov  r0, r0
+mov r0, ADDRESS
+br  r0
+mov r1, 69
+mov r0, r0

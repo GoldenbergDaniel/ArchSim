@@ -4,6 +4,9 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
+BASE_ADDRESS :: 0x1000
+ADDRESS_SIZE :: 4
+
 Address :: distinct u64
 Number  :: distinct i64
 
@@ -56,6 +59,8 @@ OpcodeType :: enum
   BMI,
   BPL,
   BL,
+  BR,
+  BLR,
 }
 
 RegisterID :: enum
@@ -99,6 +104,8 @@ opcode_table: map[string]OpcodeType = {
   "bmi"  = .BMI,
   "bpl"  = .BPL,
   "bl"   = .BL,
+  "br"   = .BR,
+  "blr"  = .BLR,
 }
 
 sim: Simulator
@@ -114,8 +121,6 @@ main :: proc()
   //   event_cb = gfx_input,
   //   frame_cb = gfx_frame,
   // })
-
-  // if true do return
 
   cli_print_welcome()
 
@@ -150,12 +155,13 @@ main :: proc()
     for line_idx := 0; line_end < len(src_data); line_idx += 1
     {
       line_end = next_line_from_bytes(src_data, line_start)
-
       if line_start == line_end
       {
-        line_start += 1
-        if line_end == len(src_data) - 1 do break
-        else do continue
+        line_start = line_end + 1
+
+        end_of_file := line_end == len(src_data) - 1
+        if end_of_file do break
+        else           do continue
       }
 
       // Skip lines containing only whitespace
@@ -571,10 +577,21 @@ main :: proc()
       case .BGE: fallthrough
       case .BMI: fallthrough
       case .BPL: fallthrough
-      case .BL:
+      case .BL:  fallthrough
+      case .BR:  fallthrough
+      case .BLR:
       {
         oper, err0 := operand_from_operands(operands[:], 0)
-        addr := cast(int) oper.(Number)
+
+        target_line_num: int
+        if opcode.opcode_type == .BR || opcode.opcode_type == .BL
+        {
+          target_line_num = cast(int) sim.registers[oper.(RegisterID)]
+        }
+        else
+        {
+          target_line_num = cast(int) oper.(Number)
+        }
 
         error = err0
         if !error
@@ -594,13 +611,24 @@ main :: proc()
             case .BL:
             {
               should_jump = true
-              sim.registers[.LR] = cast(Number) line_num + 1
+              sim.registers[.LR] = cast(Number) target_line_num + 1
+            }
+            case .BR:
+            {
+              should_jump = true
+              target_line_num = line_number_from_address(Address(target_line_num))
+            }
+            case .BLR:
+            {
+              should_jump = true
+              sim.registers[.LR] = cast(Number) target_line_num + 1
+              target_line_num = line_number_from_address(Address(target_line_num))
             }
           }
 
           if should_jump
           {
-            sim.branch_to_idx = addr
+            sim.branch_to_idx = target_line_num
           }
         }
       }
@@ -643,27 +671,71 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   return end
 }
 
-instruction_index_from_line_number :: proc(line_num: int) -> int
+address_from_line_number :: proc(line_num: int) -> Address
 {
-  result: int
+  assert(line_num < MAX_LINES)
 
-  for instruction in sim.instructions
+  result: Address
+
+  @(static)
+  line_num_to_address_cache: [MAX_LINES]Address
+
+  if line_num_to_address_cache[line_num] != 0
   {
-    if instruction.tokens != nil
-    {
-      
-    }
+    result = line_num_to_address_cache[line_num]
   }
+  else
+  {
+    for i := sim.text_section_pos; i < line_num; i += 1
+    {
+      if sim.instructions[i].tokens != nil
+      {
+        result += ADDRESS_SIZE
+      }
+    }
+
+    line_num_to_address_cache[line_num] = result
+  }
+
+  result += BASE_ADDRESS
 
   return result
 }
 
-address_from_line_number :: proc(line_num: int) -> Address
+// @TODO(dg): Not good. Needs a simplification rewrite.
+line_number_from_address :: proc(address: Address) -> int
 {
-  result: Address
+  assert(int(address - BASE_ADDRESS) < sim.line_count * 4)
 
-  // NOTE(dg): This should use instruction index, not line number
-  result = cast(Address) (line_num - sim.text_section_pos) * 4
+  result: int
+
+  address := address
+  address -= BASE_ADDRESS
+  accumulator: Address
+
+  @(static)
+  address_to_line_num_cache: [MAX_LINES]int
+
+  if address_to_line_num_cache[address] != 0
+  {
+    result = address_to_line_num_cache[address]
+  }
+  else
+  {
+    for i := 0; i < sim.line_count && accumulator <= address; i += 1
+    {
+      if sim.instructions[i].tokens != nil && i >= sim.text_section_pos
+      {
+        accumulator += ADDRESS_SIZE
+      }
+
+      result += 1
+    }
+
+    address_to_line_num_cache[address] = result
+  }
+
+  result -= 1
 
   return result
 }
