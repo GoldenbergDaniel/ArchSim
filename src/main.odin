@@ -114,9 +114,9 @@ main :: proc()
   //   width = 900,
   //   height = 600,
   //   fullscreen = false,
-  //   init_cb = gfx_init,
-  //   event_cb = gfx_input,
-  //   frame_cb = gfx_frame,
+  //   init_cb = gui_init,
+  //   event_cb = gui_input,
+  //   frame_cb = gui_frame,
   // })
 
   fmt.println(str_to_int("-3"))
