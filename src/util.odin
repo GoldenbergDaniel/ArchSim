@@ -107,11 +107,25 @@ str_to_int :: proc(str: string) -> int
     {
       // @TODO(dg): This.
       is_negative: bool
-      if str[0] == '-' do is_negative = true
-
-      for i: uint; i < len(str); i += 1
+      if str[0] == '-'
       {
-        result += int(str[i] - 48) * int(pow_uint(10, len(str)-i-1))
+        is_negative = true
+      }
+
+      digits := str
+      if is_negative
+      {
+        digits = str[1:]
+      }
+
+      for i: uint; i < len(digits); i += 1
+      {
+        result += int(digits[i] - 48) * int(pow_uint(10, len(digits)-i-1))
+      }
+
+      if is_negative
+      {
+        result *= -1
       }
     }
     case 16:
