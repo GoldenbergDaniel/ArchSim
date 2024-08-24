@@ -1,12 +1,12 @@
 package main
 
-CLI_Command :: struct
+TUI_Command :: struct
 {
-  type: CLI_CommandType,
+  type: TUI_CommandType,
   args: [3]string,
 }
 
-CLI_CommandType :: enum
+TUI_CommandType :: enum
 {
   NONE,
 
@@ -18,7 +18,7 @@ CLI_CommandType :: enum
 }
 
 @(private="file")
-command_table: map[string]CLI_CommandType = {
+command_table: map[string]TUI_CommandType = {
   "q"     = .QUIT,
   "quit"  = .QUIT,
   "h"     = .HELP,
@@ -32,7 +32,7 @@ command_table: map[string]CLI_CommandType = {
   "break" = .BREAKPOINT,
 }
 
-cli_prompt_command :: proc() -> bool
+tui_prompt_command :: proc() -> bool
 {
   done: bool
 
@@ -43,9 +43,9 @@ cli_prompt_command :: proc() -> bool
   input_len, _ := os.read(os.stdin, buf[:])
   
   cmd_str := str_strip_crlf(string(buf[:input_len]))
-  command, err := cli_command_from_string(cmd_str)
+  command, err := tui_command_from_string(cmd_str)
 
-  if cli_resolve_error(err)
+  if tui_resolve_error(err)
   {
     done = false
     return done
@@ -65,7 +65,7 @@ cli_prompt_command :: proc() -> bool
     }
     case .HELP:
     {
-      cli_print_commands_list()
+      tui_print_commands_list()
       done = false
     }
     case .STEP:
@@ -170,15 +170,15 @@ cli_prompt_command :: proc() -> bool
 }
 
 // NOTE(dg): Expects a string without leading whitespace
-cli_command_from_string :: proc(str: string) -> (CLI_Command, CLI_Error)
+tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
 {
-  result: CLI_Command
-  error: CLI_Error
+  result: TUI_Command
+  error: TUI_Error
   length := len(str)
 
   if length == 0
   {
-    return CLI_Command{type=.STEP}, nil
+    return TUI_Command{type=.STEP}, nil
   }
 
   start, end: int
@@ -204,7 +204,7 @@ cli_command_from_string :: proc(str: string) -> (CLI_Command, CLI_Error)
   return result, error
 }
 
-cli_print_welcome :: proc()
+tui_print_welcome :: proc()
 {
   term.color(.GRAY)
   fmt.print("======= ARCH SIM =======\n")
@@ -213,7 +213,7 @@ cli_print_welcome :: proc()
   term.color(.WHITE)
 }
 
-cli_print_sim_result :: proc(instruction: Instruction, idx: int)
+tui_print_sim_result :: proc(instruction: Instruction, idx: int)
 {
   term.color(.GRAY)
   fmt.print("Address: ")
@@ -242,7 +242,7 @@ cli_print_sim_result :: proc(instruction: Instruction, idx: int)
   }
 }
 
-cli_print_commands_list :: proc()
+tui_print_commands_list :: proc()
 {
   fmt.print(" q, quit    |   quit simulator\n")
   fmt.print("            |\n")
@@ -260,22 +260,22 @@ cli_print_commands_list :: proc()
 
 // @Error ///////////////////////////////////////////////////////////////////////////////
 
-CLI_Error :: union
+TUI_Error :: union
 {
-  CLI_InputError
+  TUI_InputError
 }
 
-CLI_InputError :: struct
+TUI_InputError :: struct
 {
-  type: CLI_InputErrorType,
+  type: TUI_InputErrorType,
 }
 
-CLI_InputErrorType :: enum
+TUI_InputErrorType :: enum
 {
   EXPECTED_NUMERIC
 }
 
-cli_resolve_error :: proc(error: CLI_Error) -> bool
+tui_resolve_error :: proc(error: TUI_Error) -> bool
 {
   if error == nil do return false
 
@@ -284,7 +284,7 @@ cli_resolve_error :: proc(error: CLI_Error) -> bool
   
   switch v in error
   {
-    case CLI_InputError:
+    case TUI_InputError:
     {
       fmt.printf("Invalid command.")
     }

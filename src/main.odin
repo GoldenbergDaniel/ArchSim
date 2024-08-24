@@ -122,7 +122,7 @@ main :: proc()
   fmt.println(str_to_int("-3"))
   if true do return
 
-  cli_print_welcome()
+  tui_print_welcome()
 
   perm_arena := basic.create_arena(basic.MIB * 8)
   context.allocator = perm_arena.ally
@@ -436,7 +436,7 @@ main :: proc()
     {
       for done: bool; !done;
       {
-        done = cli_prompt_command()
+        done = tui_prompt_command()
       }
     }
 
@@ -642,7 +642,7 @@ main :: proc()
       return
     }
 
-    cli_print_sim_result(instruction, line_num)
+    tui_print_sim_result(instruction, line_num)
 
     // Set next instruction to result of branch
     line_num = sim.branch_to_idx
