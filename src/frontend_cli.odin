@@ -45,7 +45,7 @@ cli_prompt_command :: proc() -> bool
   cmd_str := str_strip_crlf(string(buf[:input_len]))
   command, err := cli_command_from_string(cmd_str)
 
-  if resolve_command_error(err)
+  if cli_resolve_error(err)
   {
     done = false
     return done
@@ -85,12 +85,12 @@ cli_prompt_command :: proc() -> bool
 
       if str_is_numeric(command.args[0])
       {
-        line_idx = str_to_int(command.args[0])
+        line_idx = str_to_int(command.args[0]) - 1
         
         if sim.instructions[line_idx].has_breakpoint
         {
           term.color(.GRAY)
-          fmt.printf("Breakpoint at line %i.\n", line_idx)
+          fmt.printf("Breakpoint at line %i.\n", line_idx + 1)
           term.color(.WHITE)
         }
       }
@@ -99,7 +99,7 @@ cli_prompt_command :: proc() -> bool
         modifier = command.args[0]
         if command.args[1] != ""
         {
-          line_idx = str_to_int(command.args[1])
+          line_idx = str_to_int(command.args[1]) - 1
         }
 
         switch modifier
@@ -111,7 +111,7 @@ cli_prompt_command :: proc() -> bool
               sim.instructions[line_idx].has_breakpoint = true
 
               term.color(.GREEN)
-              fmt.printf("Breakpoint set at line %i.\n", line_idx)
+              fmt.printf("Breakpoint set at line %i.\n", line_idx + 1)
               term.color(.WHITE)
             }
           }
@@ -122,7 +122,7 @@ cli_prompt_command :: proc() -> bool
               sim.instructions[line_idx].has_breakpoint = false
 
               term.color(.ORANGE)
-              fmt.printf("Breakpoint removed at line %i.\n", line_idx)
+              fmt.printf("Breakpoint removed at line %i.\n", line_idx + 1)
               term.color(.WHITE)
             }
           }
@@ -275,7 +275,7 @@ CLI_InputErrorType :: enum
   EXPECTED_NUMERIC
 }
 
-resolve_command_error :: proc(error: CLI_Error) -> bool
+cli_resolve_error :: proc(error: CLI_Error) -> bool
 {
   if error == nil do return false
 

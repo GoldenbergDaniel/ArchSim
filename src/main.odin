@@ -5,7 +5,7 @@ MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
 BASE_ADDRESS :: 0x1000
-ADDRESS_SIZE :: 4
+INSTRUCTION_SIZE :: 4
 
 Address :: distinct u64
 Number  :: distinct i64
@@ -31,8 +31,7 @@ Simulator :: struct
   },
 }
 
-SymbolTable      :: distinct map[string]Number
-InstructionTable :: distinct [MAX_LINES]Instruction                                      
+SymbolTable :: distinct map[string]Number
 
 OpcodeType :: enum
 {
@@ -432,7 +431,7 @@ main :: proc()
     }
 
     // Prompt user command ----------------
-    if sim.step_to_next && line_num < sim.line_count - 1
+    if sim.step_to_next && line_num < sim.line_count
     {
       for done: bool; !done;
       {
@@ -551,7 +550,7 @@ main :: proc()
 
           sim.status_flag.equal = val1 == val2
           sim.status_flag.greater = val1 > val2
-          // NOTE(dg): This may be incorrect ARM
+          // @NOTE(dg): This may be invalid ARM
           sim.status_flag.negative = val1 < 0
 
           should_jump: bool
@@ -690,7 +689,7 @@ address_from_line_number :: proc(line_num: int) -> Address
     {
       if sim.instructions[i].tokens != nil
       {
-        result += ADDRESS_SIZE
+        result += INSTRUCTION_SIZE
       }
     }
 
@@ -705,7 +704,7 @@ address_from_line_number :: proc(line_num: int) -> Address
 // @TODO(dg): Not good. Needs a simplification rewrite.
 line_number_from_address :: proc(address: Address) -> int
 {
-  assert(int(address - BASE_ADDRESS) < sim.line_count * 4)
+  assert(int(address - BASE_ADDRESS) < sim.line_count * INSTRUCTION_SIZE)
 
   result: int
 
@@ -726,7 +725,7 @@ line_number_from_address :: proc(address: Address) -> int
     {
       if sim.instructions[i].tokens != nil && i >= sim.text_section_pos
       {
-        accumulator += ADDRESS_SIZE
+        accumulator += INSTRUCTION_SIZE
       }
 
       result += 1

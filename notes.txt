@@ -5,10 +5,10 @@ TODO
   [~] error checking
   [X] conditional branching (cmp)
   [X] bl, cbz, cbnz 
-  [X] standardize line/instruction index/address (br, blr)
+  [X] standardize instruction addresses (br, blr)
   [_] memory (load/store)
   [X] breakpoints
-  [_] disk storage
+  [_] disk storage (syscalls)
   [_] assembler
 
 BREAKPOINTS
@@ -17,3 +17,9 @@ BREAKPOINTS
   - to peak:   break X
   - to clear:  break clear
   - to list:   break list
+
+SYSCALLS
+  - open
+  - close
+  - read
+  - write
