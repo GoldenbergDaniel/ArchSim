@@ -4,7 +4,7 @@ MAX_SRC_BUF_BYTES   :: 1024
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-BASE_ADDRESS :: 0x1000
+BASE_ADDRESS :: 0x10000000
 INSTRUCTION_SIZE :: 4
 
 Address :: distinct u64
@@ -22,6 +22,7 @@ Simulator :: struct
   text_section_pos: int,
   branch_to_idx: int,
 
+  memory: []Number,
   registers: [RegisterID]Number,
   status_flag: struct
   {
@@ -119,8 +120,8 @@ main :: proc()
   //   frame_cb = gui_frame,
   // })
 
-  fmt.println(str_to_int("-3"))
-  if true do return
+  // fmt.println(BASE_ADDRESS)
+  // if true do return
 
   tui_print_welcome()
 
@@ -444,7 +445,7 @@ main :: proc()
 
     sim.branch_to_idx = line_num + 1
 
-    // Determine opcode and operand indices ----------------
+    // Fetch opcode and operands ----------------
     opcode: Token
     operands: [3]Token
     {
@@ -738,6 +739,20 @@ line_number_from_address :: proc(address: Address) -> int
   result -= 1
 
   return result
+}
+
+memory_load_data :: proc(address: Address) -> Number
+{
+  assert(address >= BASE_ADDRESS && address <= BASE_ADDRESS + 0xFFFF)
+
+  return sim.memory[address - BASE_ADDRESS]
+}
+
+memory_store_data :: proc(address: Address, data: Number)
+{
+  assert(address >= BASE_ADDRESS && address <= BASE_ADDRESS + 0xFFFF)
+
+  sim.memory[address - BASE_ADDRESS] = data
 }
 
 // @Token ///////////////////////////////////////////////////////////////////////////////
