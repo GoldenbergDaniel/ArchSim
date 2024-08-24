@@ -1,6 +1,6 @@
 package main
 
-// @String ///////////////////////////////////////////////////////////////////////////////
+// @String //////////////////////////////////////////////////////////////////////////////
 
 str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 {
@@ -26,7 +26,14 @@ str_is_dec :: proc(str: string) -> bool
   if len(str) == 0 do return false
   if len(str) > 1 && str[0] == '0' do return false
 
-  for i in 0..<len(str)
+  is_negative: bool
+  if len(str) > 1 && str[0] == '-'
+  {
+    is_negative = true
+  }
+
+  start := 1 if is_negative else 0
+  for i in start..<len(str)
   {
     if str[i] < '0' || str[i] > '9' do return false
   }
@@ -98,6 +105,7 @@ str_to_int :: proc(str: string) -> int
     }
     case 10:
     {
+      // @TODO(dg): This.
       is_negative: bool
       if str[0] == '-' do is_negative = true
 
@@ -158,7 +166,7 @@ str_find_char :: proc(str: string, chr: byte, begin := 0) -> (loc: int)
   return loc
 }
 
-// @Math /////////////////////////////////////////////////////////////////////////////////
+// @Math ////////////////////////////////////////////////////////////////////////////////
 
 pow_uint :: proc(base, exp: uint) -> uint
 {

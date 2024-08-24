@@ -17,7 +17,7 @@ Simulator :: struct
 
   instructions: []Instruction,
   line_count : int,
-  symbol_table: SymbolTable,
+  symbol_table: map[string]Number,
   data_section_pos: int,
   text_section_pos: int,
   branch_to_idx: int,
@@ -30,8 +30,6 @@ Simulator :: struct
     negative: bool,
   },
 }
-
-SymbolTable :: distinct map[string]Number
 
 OpcodeType :: enum
 {
@@ -120,6 +118,9 @@ main :: proc()
   //   event_cb = gfx_input,
   //   frame_cb = gfx_frame,
   // })
+
+  fmt.println(str_to_int("-3"))
+  if true do return
 
   cli_print_welcome()
 
