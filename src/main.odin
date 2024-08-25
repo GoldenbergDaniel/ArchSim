@@ -22,7 +22,7 @@ Simulator :: struct
   text_section_pos: int,
   branch_to_idx: int,
 
-  memory: []Number,
+  memory: []byte,
   registers: [RegisterID]Number,
   status_flag: struct
   {
@@ -110,25 +110,22 @@ sim: Simulator
 
 main :: proc()
 {
-  // sapp.run(sapp.Desc{
-  //   window_title = "ArchSim",
-  //   width = 900,
-  //   height = 600,
-  //   fullscreen = false,
-  //   init_cb = gui_init,
-  //   event_cb = gui_input,
-  //   frame_cb = gui_frame,
-  // })
-
-  // fmt.println(BASE_ADDRESS)
-  // if true do return
-
-  tui_print_welcome()
+  // gui_run()
 
   perm_arena := basic.create_arena(basic.MIB * 8)
   context.allocator = perm_arena.ally
   temp_arena := basic.create_arena(basic.MIB * 8)
   context.temp_allocator = temp_arena.ally
+
+  sim.memory = make([]byte, 1024)
+  memory_store_bytes(BASE_ADDRESS, bytes_from_value(510, 4))
+  value := value_from_bytes(memory_load_bytes(BASE_ADDRESS, 4))
+  fmt.println("Expected:", 510)
+  fmt.println("  Actual:", value)
+
+  if true do return
+
+  tui_print_welcome()
 
   src_file_path := "res/main.asm"
   if len(os.args) > 1
@@ -147,6 +144,7 @@ main :: proc()
   src_buf: [MAX_SRC_BUF_BYTES]byte
   src_size, _ := os.read(src_file, src_buf[:])
   src_data := src_buf[:src_size]
+  os.close(src_file)
 
   sim.instructions = make([]Instruction, MAX_LINES)
 
@@ -741,18 +739,53 @@ line_number_from_address :: proc(address: Address) -> int
   return result
 }
 
-memory_load_data :: proc(address: Address) -> Number
+memory_load_bytes :: proc(address: Address, size: int) -> []byte
 {
-  assert(address >= BASE_ADDRESS && address <= BASE_ADDRESS + 0xFFFF)
+  address := cast(int) address
+  assert(address >= BASE_ADDRESS && address + size <= BASE_ADDRESS + 0xFFFF)
+  address -= BASE_ADDRESS
 
-  return sim.memory[address - BASE_ADDRESS]
+  return sim.memory[address:address+size]
 }
 
-memory_store_data :: proc(address: Address, data: Number)
+memory_store_bytes :: proc(address: Address, bytes: []byte)
 {
-  assert(address >= BASE_ADDRESS && address <= BASE_ADDRESS + 0xFFFF)
+  address := cast(int) address
+  size := len(bytes)
+  assert(address >= BASE_ADDRESS && address + size <= BASE_ADDRESS + 0xFFFF)
+  address -= BASE_ADDRESS
 
-  sim.memory[address - BASE_ADDRESS] = data
+  for i in address..<address+size
+  {
+    sim.memory[i] = bytes[i - address]
+  }
+}
+
+value_from_bytes :: proc(bytes: []byte) -> Number
+{
+  result: Number
+  size := len(bytes)
+
+  assert(size == 1 || size == 2 || size == 4 || size == 8)
+
+  for i in 0..<size
+  {
+    result |= Number(bytes[i]) << (uint(size-i-1) * 8)
+  }
+
+  return result
+}
+
+bytes_from_value :: proc(value: Number, size: int) -> []byte
+{
+  result: []byte = make([]byte, size)
+
+  for i in 0..<size
+  {
+    result[i] = byte((value >> (uint(size-i-1) * 8)) & 0b11111111)
+  }
+
+  return result
 }
 
 // @Token ///////////////////////////////////////////////////////////////////////////////
