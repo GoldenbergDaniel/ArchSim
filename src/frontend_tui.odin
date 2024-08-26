@@ -236,7 +236,10 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
   term.color(.WHITE)
   for reg in RegisterID
   {
-    if reg == .NIL || reg == .LR do continue
+    if (reg < .X5 || reg > .X7) && (reg < .X28 || reg > .X31)
+    {
+      continue
+    }
 
     fmt.printf(" %s=%i\n", reg, sim.registers[reg])
   }

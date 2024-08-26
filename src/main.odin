@@ -24,51 +24,45 @@ Simulator :: struct
 
   memory: []byte,
   registers: [RegisterID]Number,
-  status_flag: struct
-  {
-    equal: bool,
-    greater: bool,
-    negative: bool,
-  },
 }
 
 OpcodeType :: enum
 {
   NIL,
 
-  MOV,
-
+  NOP,
+  MV,
+  
   ADD,
   SUB,
-  SHL,
-  SHR,
+  AND,
+  OR,
+  XOR,
+  NOT,
+  SLL,
+  SRL,
+  SRA,
 
-  CMP,
-  CBZ,
-  CBNZ,
+  J,
+  JR,
+  JAL,
+  JALR,
 
-  B,
   BEQ,
   BNE,
   BLT,
-  BGT,
-  BLE,
   BGE,
-  BMI,
-  BPL,
-  BL,
-  BR,
-  BLR,
 }
 
 RegisterID :: enum
 {
   NIL,
 
-  R0,
-  R1,
-  R2,
-  R3,
+  X0, X1, X2, X3, X4, X5, X6, X7, 
+  X8, X9, X10, X11, X12, X13, X14, X15, 
+  X16, X17, X18, X19, X20, X21, X22, X23, 
+  X24, X25, X26, X27, X28, X29, X30, X31,
+
   LR,
 }
 
@@ -81,29 +75,28 @@ Operand :: union
 opcode_table: map[string]OpcodeType = {
   ""     = .NIL,
 
-  "mov"  = .MOV,
+  "nop"  = .NOP,
+  "mv"   = .MV,
 
   "add"  = .ADD,
   "sub"  = .SUB,
-  "shl"  = .SHL,
-  "shr"  = .SHR,
+  "and"  = .AND,
+  "or"   = .OR,
+  "xor"  = .XOR,
+  "npt"  = .NOT,
+  "sll"  = .SLL,
+  "srl"  = .SRL,
+  "sra"  = .SRA,
 
-  "cmp"  = .CMP,
-  "cbz"  = .CBZ,
-  "cbnz" = .CBNZ,
+  "j"    = .J,
+  "jr"   = .JR,
+  "jal"  = .JAL,
+  "jalr" = .JALR,
 
-  "b"    = .B,
   "beq"  = .BEQ,
   "bne"  = .BNE,
   "blt"  = .BLT,
-  "bgt"  = .BGT,
-  "ble"  = .BLE,
   "bge"  = .BGE,
-  "bmi"  = .BMI,
-  "bpl"  = .BPL,
-  "bl"   = .BL,
-  "br"   = .BR,
-  "blr"  = .BLR,
 }
 
 sim: Simulator
@@ -112,18 +105,15 @@ main :: proc()
 {
   // gui_run()
 
-  perm_arena := basic.create_arena(basic.MIB * 8)
-  context.allocator = perm_arena.ally
-  temp_arena := basic.create_arena(basic.MIB * 8)
-  context.temp_allocator = temp_arena.ally
+  // sim.memory = make([]byte, 1024)
 
-  sim.memory = make([]byte, 1024)
-  memory_store_bytes(BASE_ADDRESS, bytes_from_value(510, 4))
-  value := value_from_bytes(memory_load_bytes(BASE_ADDRESS, 4))
-  fmt.println("Expected:", 510)
-  fmt.println("  Actual:", value)
+  // memory_store_bytes(BASE_ADDRESS, bytes_from_value(510, 4))
+  // value := value_from_bytes(memory_load_bytes(BASE_ADDRESS, 4))
+  // fmt.println("  Memory:", sim.memory[0:4])
+  // fmt.println("Expected:", 510)
+  // fmt.println("  Actual:", value)
 
-  if true do return
+  // if true do return
 
   tui_print_welcome()
 
@@ -248,16 +238,16 @@ main :: proc()
 
         tokenizer_loop: for tokenizer.pos < tokenizer.end
         {
-          buf_str := get_next_token_string(&tokenizer, line_bytes)
-          if buf_str == "" || buf_str == "," do continue tokenizer_loop
+          tok_str := get_next_token_string(&tokenizer, line_bytes)
+          if tok_str == "" || tok_str == "," do continue tokenizer_loop
 
           // Tokenize opcode
           { 
-            buf_str_lower := str_to_lower(buf_str)
-            op_type := opcode_table[buf_str_lower]
+            tok_str_lower := str_to_lower(tok_str)
+            op_type := opcode_table[tok_str_lower]
             if op_type != .NIL
             {
-              line.tokens[token_cnt] = Token{data=buf_str, type=.OPCODE}
+              line.tokens[token_cnt] = Token{data=tok_str, type=.OPCODE}
               line.tokens[token_cnt].opcode_type = op_type
               token_cnt += 1
               continue tokenizer_loop
@@ -267,9 +257,9 @@ main :: proc()
           }
 
           // Tokenize number
-          if str_is_bin(buf_str) || str_is_dec(buf_str) || str_is_hex(buf_str)
+          if str_is_bin(tok_str) || str_is_dec(tok_str) || str_is_hex(tok_str)
           {
-            line.tokens[token_cnt] = Token{data=buf_str, type=.NUMBER}
+            line.tokens[token_cnt] = Token{data=tok_str, type=.NUMBER}
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -279,25 +269,25 @@ main :: proc()
             @(static)
             operators := [?]TokenType{':' = .COLON, '=' = .EQUALS}
             
-            if buf_str == ":" || buf_str == "="
+            if tok_str == ":" || tok_str == "="
             {
-              line.tokens[token_cnt] = Token{data=buf_str, type=operators[buf_str[0]]}
+              line.tokens[token_cnt] = Token{data=tok_str, type=operators[tok_str[0]]}
               token_cnt += 1
               continue tokenizer_loop
             }
           }
 
           // Tokenize directive
-          if buf_str[0] == '$'
+          if tok_str[0] == '$'
           {
-            line.tokens[token_cnt] = Token{data=buf_str, type=.DIRECTIVE}
+            line.tokens[token_cnt] = Token{data=tok_str, type=.DIRECTIVE}
             token_cnt += 1
             continue tokenizer_loop
           }
 
           // Tokenize identifier
           {
-            line.tokens[token_cnt] = Token{data=buf_str, type=.IDENTIFIER}
+            line.tokens[token_cnt] = Token{data=tok_str, type=.IDENTIFIER}
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -467,8 +457,9 @@ main :: proc()
 
     switch opcode.opcode_type
     {
-      case .NIL: {}
-      case .MOV:
+      case .NIL: panic("NIL opcode")
+      case .NOP: {}
+      case .MV:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
         op1_reg, err1  := operand_from_operands(operands[:], 1)
@@ -488,8 +479,13 @@ main :: proc()
       }
       case .ADD: fallthrough
       case .SUB: fallthrough
-      case .SHL: fallthrough
-      case .SHR:
+      case .AND: fallthrough
+      case .OR:  fallthrough
+      case .XOR: fallthrough
+      case .NOT: fallthrough
+      case .SLL: fallthrough
+      case .SRL: fallthrough
+      case .SRA:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
         op1_reg,  err1 := operand_from_operands(operands[:], 1)
@@ -517,73 +513,68 @@ main :: proc()
           {
             case .ADD: result = val1 + val2
             case .SUB: result = val1 - val2
-            case .SHL: result = val1 << u64(val2)
-            case .SHR: result = val1 >> u64(val2)
+            case .AND: result = val1 & val2
+            case .OR:  result = val1 | val2
+            case .XOR: result = val1 | val2
+            case .NOT: result = ~val1
+            case .SLL: result = val1 << u64(val2)
+            case .SRL: {}
+            case .SRA: result = val1 >> u64(val2)
           }
 
           sim.registers[dest_reg.(RegisterID)] = result
         }
       }
-      case .CMP: fallthrough
-      case .CBZ: fallthrough
-      case .CBNZ:
+      case .BEQ: fallthrough
+      case .BNE: fallthrough
+      case .BLT: fallthrough
+      case .BGE:
       {
         oper1, err0 := operand_from_operands(operands[:], 0)
         oper2, err1 := operand_from_operands(operands[:], 1)
+        dest, err2  := operand_from_operands(operands[:], 2)
 
-        error = err0 || err1
+        error = err0 || err1 || err2
         if !error
         {
           val1, val2: Number
 
           switch v in oper1
           {
-            case Number:   val1 = v
+            case Number:     val1 = v
             case RegisterID: val1 = sim.registers[v]
           }
 
           switch v in oper2
           {
-            case Number:   val2 = v
+            case Number:     val2 = v
             case RegisterID: val2 = sim.registers[v]
           }
-
-          sim.status_flag.equal = val1 == val2
-          sim.status_flag.greater = val1 > val2
-          // @NOTE(dg): This may be invalid ARM
-          sim.status_flag.negative = val1 < 0
 
           should_jump: bool
           #partial switch opcode.opcode_type
           {
-            case .CMP:  should_jump = false
-            case .CBZ:  should_jump = val1 == 0
-            case .CBNZ: should_jump = val1 != 0
+            case .BEQ: should_jump = val1 == val2
+            case .BNE: should_jump = val1 != val2
+            case .BLT: should_jump = val1 < val2
+            case .BGE: should_jump = val1 >= val2
           }
 
           if should_jump
           {
-            sim.branch_to_idx = cast(int) oper2.(Number)
+            sim.branch_to_idx = line_number_from_address(Address(dest.(Number)))
           }
         }
       }
-      case .B:   fallthrough
-      case .BEQ: fallthrough
-      case .BNE: fallthrough
-      case .BLT: fallthrough
-      case .BGT: fallthrough
-      case .BLE: fallthrough
-      case .BGE: fallthrough
-      case .BMI: fallthrough
-      case .BPL: fallthrough
-      case .BL:  fallthrough
-      case .BR:  fallthrough
-      case .BLR:
+      case .J:   fallthrough
+      case .JR:  fallthrough
+      case .JAL: fallthrough
+      case .JALR:  
       {
         oper, err0 := operand_from_operands(operands[:], 0)
 
         target_line_num: int
-        if opcode.opcode_type == .BR || opcode.opcode_type == .BL
+        if opcode.opcode_type == .JR || opcode.opcode_type == .JALR
         {
           target_line_num = cast(int) sim.registers[oper.(RegisterID)]
         }
@@ -598,26 +589,18 @@ main :: proc()
           should_jump: bool
           #partial switch opcode.opcode_type
           {
-            case .B:   should_jump = true
-            case .BEQ: should_jump = sim.status_flag.equal
-            case .BNE: should_jump = !sim.status_flag.equal
-            case .BLT: should_jump = !sim.status_flag.greater
-            case .BGT: should_jump = sim.status_flag.greater
-            case .BLE: should_jump = sim.status_flag.greater || sim.status_flag.equal
-            case .BGE: should_jump = sim.status_flag.greater || sim.status_flag.equal
-            case .BMI: should_jump = sim.status_flag.negative
-            case .BPL: should_jump = !sim.status_flag.negative
-            case .BL:
-            {
-              should_jump = true
-              sim.registers[.LR] = cast(Number) target_line_num + 1
-            }
-            case .BR:
+            case .J:   should_jump = true
+            case .JR:
             {
               should_jump = true
               target_line_num = line_number_from_address(Address(target_line_num))
             }
-            case .BLR:
+            case .JAL:
+            {
+              should_jump = true
+              sim.registers[.LR] = cast(Number) target_line_num + 1
+            }
+            case .JALR:
             {
               should_jump = true
               sim.registers[.LR] = cast(Number) target_line_num + 1
@@ -826,10 +809,14 @@ register_from_token :: proc(token: Token) -> (RegisterID, bool)
 
   switch token.data
   {
-    case "r0": result = .R0
-    case "r1": result = .R1
-    case "r2": result = .R2
-    case "r3": result = .R3
+    case "x0": result = .X0
+    case "t0": result = .X5
+    case "t1": result = .X6
+    case "t2": result = .X7
+    case "t3": result = .X28
+    case "t4": result = .X29
+    case "t5": result = .X30
+    case "t6": result = .X31
     case: err = true
   }
 
@@ -973,7 +960,4 @@ resolve_parser_error :: proc(error: ParserError) -> bool
 import "core:fmt"
 import "core:os"
 
-import "basic"
 import "term"
-
-// import sapp "ext:sokol/app"

@@ -3,13 +3,16 @@ TODO
   [X] colored output
   [X] preprocessor (labels, variables, origin)
   [~] error checking
-  [X] conditional branching (cmp)
-  [X] bl, cbz, cbnz 
-  [X] standardize instruction addresses (br, blr)
-  [_] memory (load/store)
+  [X] logical operators (and, or, xor, not)
+  [X] conditional branching
+  [X] standardize instruction addresses (jr, jalr)
+  [_] register view
+  [X] memory (load/store)
+  [_] memory view
+  [_] l, s
+  [_] the stack
   [X] breakpoints
   [_] disk storage (syscalls)
-  [_] assembler
 
 BREAKPOINTS
   - to set:    break set X
@@ -19,7 +22,7 @@ BREAKPOINTS
   - to list:   break list
 
 MEMORY
- - 0x'0000'0000'1000'0000 <-> 0x'0000'0000'1000'FFFF
+ - 0x'00000000'10000000 <-> 0x'00000000'1000FFFF
 
 SYSCALLS
   - open
