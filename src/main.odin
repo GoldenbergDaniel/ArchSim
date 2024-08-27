@@ -1,10 +1,10 @@
 package main
 
-MAX_SRC_BUF_BYTES   :: 1024
+MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-BASE_ADDRESS :: 0x10000000
+BASE_ADDRESS     :: 0x10000000
 INSTRUCTION_SIZE :: 4
 
 Address :: distinct u64
@@ -24,6 +24,7 @@ Simulator :: struct
 
   memory: []byte,
   registers: [RegisterID]Number,
+  registers_prev: [RegisterID]Number,
 }
 
 OpcodeType :: enum
@@ -56,12 +57,12 @@ OpcodeType :: enum
 
 RegisterID :: enum
 {
-  NIL,
+  NIL, 
 
   X0, X1, X2, X3, X4, X5, X6, X7, 
   X8, X9, X10, X11, X12, X13, X14, X15, 
   X16, X17, X18, X19, X20, X21, X22, X23, 
-  X24, X25, X26, X27, X28, X29, X30, X31,
+  X24, X25, X26, X27, X28, X29, X30, X31, 
 
   LR,
 }
@@ -112,7 +113,7 @@ main :: proc()
   // fmt.println("  Memory:", sim.memory[0:4])
   // fmt.println("Expected:", 510)
   // fmt.println("  Actual:", value)
-
+  
   // if true do return
 
   tui_print_welcome()
@@ -562,7 +563,7 @@ main :: proc()
 
           if should_jump
           {
-            sim.branch_to_idx = line_number_from_address(Address(dest.(Number)))
+            sim.branch_to_idx = cast(int) dest.(Number)
           }
         }
       }
@@ -593,7 +594,7 @@ main :: proc()
             case .JR:
             {
               should_jump = true
-              target_line_num = line_number_from_address(Address(target_line_num))
+              target_line_num = line_index_from_address(Address(target_line_num))
             }
             case .JAL:
             {
@@ -604,7 +605,7 @@ main :: proc()
             {
               should_jump = true
               sim.registers[.LR] = cast(Number) target_line_num + 1
-              target_line_num = line_number_from_address(Address(target_line_num))
+              target_line_num = line_index_from_address(Address(target_line_num))
             }
           }
 
@@ -653,7 +654,7 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   return end
 }
 
-address_from_line_number :: proc(line_num: int) -> Address
+address_from_line_index :: proc(line_num: int) -> Address
 {
   assert(line_num < MAX_LINES)
 
@@ -685,7 +686,7 @@ address_from_line_number :: proc(line_num: int) -> Address
 }
 
 // @TODO(dg): Not good. Needs a simplification rewrite.
-line_number_from_address :: proc(address: Address) -> int
+line_index_from_address :: proc(address: Address) -> int
 {
   assert(int(address - BASE_ADDRESS) < sim.line_count * INSTRUCTION_SIZE)
 

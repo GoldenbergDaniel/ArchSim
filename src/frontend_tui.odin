@@ -15,6 +15,15 @@ TUI_CommandType :: enum
   CONTINUE,
   STEP,
   BREAKPOINT,
+  VIEW,
+}
+
+TUI_RegisterViewType :: enum
+{
+  ALL,
+  POINTERS,
+  TEMPORARIES,
+  SAVED,
 }
 
 @(private="file")
@@ -30,6 +39,45 @@ command_table: map[string]TUI_CommandType = {
   "step"  = .STEP,
   "b"     = .BREAKPOINT,
   "break" = .BREAKPOINT,
+  "v"     = .VIEW,
+  "view"  = .VIEW,
+}
+
+register_names: [RegisterID]string = {
+  .NIL = "",
+  .X0  = "",
+  .X1  = "ra",
+  .X2  = "sp",
+  .X3  = "gp",
+  .X4  = "tp",
+  .X5  = "t0",
+  .X6  = "t1",
+  .X7  = "t2",
+  .X8  = "s0",
+  .X9  = "s1",
+  .X10 = "a0",
+  .X11 = "a1",
+  .X12 = "a2",
+  .X13 = "a3",
+  .X14 = "a4",
+  .X15 = "a5",
+  .X16 = "a6",
+  .X17 = "a7",
+  .X18 = "s2",
+  .X19 = "s3",
+  .X20 = "s4",
+  .X21 = "s5",
+  .X22 = "s6",
+  .X23 = "s7",
+  .X24 = "s8",
+  .X25 = "s9",
+  .X26 = "s10",
+  .X27 = "s11",
+  .X28 = "t3",
+  .X29 = "t4",
+  .X30 = "t5",
+  .X31 = "t6",
+  .LR  = "",
 }
 
 tui_prompt_command :: proc() -> bool
@@ -156,6 +204,13 @@ tui_prompt_command :: proc() -> bool
       
       done = false
     }
+    case .VIEW:
+    {
+      if command.args[0] == "r" || command.args[0] == "reg"
+      {
+        tui_print_register_view({.ALL})
+      }
+    }
     case .NONE:
     {
       term.color(.RED)
@@ -216,56 +271,99 @@ tui_print_welcome :: proc()
 tui_print_sim_result :: proc(instruction: Instruction, idx: int)
 {
   term.color(.GRAY)
+  fmt.print("Instruction: ")
+  term.color(.WHITE)
+  for tok in instruction.tokens
+  {
+    if tok.data != ""
+    {
+      fmt.print(tok.data, "")
+    }
+  }
+  fmt.printf(" (line %i)\n", idx+1)
+
+  term.color(.GRAY)
   fmt.print("Address: ")
   term.color(.WHITE)
-  fmt.printf("%#X\n", address_from_line_number(idx))
+  fmt.printf("%#X\n", address_from_line_index(idx))
 
   term.color(.GRAY)
   fmt.print("Next address: ")
   term.color(.WHITE)
-  fmt.printf("%#X\n", address_from_line_number(sim.branch_to_idx))
+  fmt.printf("%#X\n", address_from_line_index(sim.branch_to_idx))
 
-  term.color(.GRAY)
-  fmt.print("Instruction: ")
-  term.color(.WHITE)
-  for tok in instruction.tokens do fmt.print(tok.data, "")
-  fmt.print("\n")
-
-  term.color(.GRAY)
-  fmt.print("Registers:\n")
-  term.color(.WHITE)
+  print_register_title := true
   for reg in RegisterID
   {
-    if (reg < .X5 || reg > .X7) && (reg < .X28 || reg > .X31)
+    if sim.registers[reg] != sim.registers_prev[reg]
     {
-      continue
-    }
+      if print_register_title
+      {
+        term.color(.GRAY)
+        fmt.print("Register: ")
+        term.color(.WHITE)
 
-    fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        print_register_title = false
+      }
+
+      fmt.printf("%s=%i\n", register_names[reg], sim.registers[reg])
+      sim.registers_prev[reg] = sim.registers[reg]
+    }
+  }
+}
+
+tui_print_register_view :: proc(which: bit_set[TUI_RegisterViewType])
+{
+  // Print temporaries
+  if .TEMPORARIES in which || .ALL in which
+  {
+    fmt.print("[TEMPORARIES]\n")
+
+    for reg in RegisterID
+    {
+      if (reg >= .X5 && reg <= .X7) || (reg >= .X28 && reg <= .X31)
+      {
+        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+      }
+    }
+  }
+
+  // Print saved
+  if .SAVED in which || .ALL in which
+  {
+    fmt.print("[SAVED]\n")
+
+    for reg in RegisterID
+    {
+      if (reg >= .X18 && reg <= .X27)
+      {
+        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+      }
+    }
   }
 }
 
 tui_print_commands_list :: proc()
 {
   fmt.print(" q, quit    |   quit simulator\n")
-  fmt.print("            |\n")
+  fmt.print(" s, step    |   step to next instruction\n")
+  fmt.print(" r, run     |   continue to next breakpoint\n")
   fmt.print(" b, break   |   breakpoints\n")
   fmt.print("  'X'       |   peak breakpoint at 'X'\n")
   fmt.print("  set 'X'   |   set breakpoint at 'X'\n")
   fmt.print("  rem 'X'   |   remove breakpoint at 'X'\n")
   fmt.print("  clear     |   clear breakpoints\n")
   fmt.print("  list      |   list breakpoints\n")
-  fmt.print("            |\n")
-  fmt.print(" s, step    |   step to next instruction\n")
-  fmt.print("            |\n")
-  fmt.print(" r, run     |   continue to next breakpoint\n")
+  fmt.print(" v, view    |   view simulator contents\n")
+  fmt.print("  r, reg    |   view registers\n")
+  fmt.print("  m, mem    |   view memory (NOT IMPLEMENTED)\n")
 }
 
 // @Error ///////////////////////////////////////////////////////////////////////////////
 
 TUI_Error :: union
 {
-  TUI_InputError
+  TUI_InputError,
 }
 
 TUI_InputError :: struct

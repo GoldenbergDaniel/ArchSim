@@ -6,7 +6,7 @@ TODO
   [X] logical operators (and, or, xor, not)
   [X] conditional branching
   [X] standardize instruction addresses (jr, jalr)
-  [_] register view
+  [~] register view
   [X] memory (load/store)
   [_] memory view
   [_] l, s
