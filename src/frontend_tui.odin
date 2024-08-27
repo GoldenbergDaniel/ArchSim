@@ -235,7 +235,7 @@ tui_prompt_command :: proc() -> bool
   return done
 }
 
-// NOTE(dg): Expects a string without leading whitespace
+// DOC(dg): Expects a string without leading whitespace
 tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
 {
   result: TUI_Command
@@ -323,7 +323,6 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
   }
 }
 
-// @TODO(dg): THIS.
 tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 {
   // Print temporaries
@@ -421,16 +420,7 @@ tui_resolve_error :: proc(error: TUI_Error) -> bool
   if error == nil do return false
 
   term.color(.RED)
-  fmt.print("[COMMAND ERROR]: ")
-  
-  switch v in error
-  {
-    case TUI_InputError:
-    {
-      fmt.printf("Invalid command.")
-    }
-  }
-
+  fmt.print("[COMMAND ERROR]: Invalid command.\n")
   term.color(.WHITE)
 
   return true

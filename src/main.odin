@@ -5,6 +5,7 @@ MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
 BASE_ADDRESS     :: 0x1000_0000
+MEMORY_SIZE      :: 65535
 INSTRUCTION_SIZE :: 4
 
 Address :: distinct u32
@@ -63,6 +64,13 @@ OpcodeType :: enum
   BLEZ,
   BGEZ,
 
+  LB,
+  LH,
+  LW,
+  SB,
+  SH,
+  SW,
+
   LUI,
 }
 
@@ -115,6 +123,13 @@ opcode_table: map[string]OpcodeType = {
   "blez"  = .BLEZ,
   "bgez"  = .BGEZ,
 
+  "lb"    = .LB,
+  "lh"    = .LH,
+  "lw"    = .LW,
+  "sb"    = .SB,
+  "sh"    = .SH,
+  "sw"    = .SW,
+
   "lui"   = .LUI,
 }
 
@@ -156,12 +171,15 @@ main :: proc()
   os.close(src_file)
 
   sim.instructions = make([]Instruction, MAX_LINES)
+  sim.memory = make([]byte, MEMORY_SIZE)
 
   // Tokenize ----------------
   {
     line_start, line_end: int
     for line_idx := 0; line_end < len(src_data); line_idx += 1
     {
+      defer free_all(context.temp_allocator)
+
       line_end = next_line_from_bytes(src_data, line_start)
       if line_start == line_end
       {
@@ -241,7 +259,7 @@ main :: proc()
                 whitespace = false
               }
             }
-            else if b == ':' || b == '=' || b == ',' || b == ' '
+            else if b == ':' || b == '=' || b == ',' || b == ' ' || b == '[' || b == ']'
             {
               offset = int(i == tokenizer.pos)
               break
@@ -258,7 +276,10 @@ main :: proc()
         tokenizer_loop: for tokenizer.pos < tokenizer.end
         {
           tok_str := get_next_token_string(&tokenizer, line_bytes)
-          if tok_str == "" || tok_str == "," do continue tokenizer_loop
+          if tok_str == "" || tok_str == "," || tok_str == "[" || tok_str == "]"
+          {
+            continue tokenizer_loop
+          }
 
           // Tokenize opcode
           { 
@@ -271,8 +292,6 @@ main :: proc()
               token_cnt += 1
               continue tokenizer_loop
             }
-
-            free_all(context.temp_allocator)
           }
 
           // Tokenize number
@@ -426,6 +445,8 @@ main :: proc()
   // Execute ----------------
   for line_num := sim.text_section_pos; line_num < sim.line_count;
   {
+    defer free_all(context.temp_allocator)
+
     if sim.instructions[line_num].tokens == nil
     {
       line_num += 1
@@ -608,7 +629,7 @@ main :: proc()
       case .J:   fallthrough
       case .JR:  fallthrough
       case .JAL: fallthrough
-      case .JALR:  
+      case .JALR:
       {
         oper, err0 := operand_from_operands(operands[:], 0)
 
@@ -653,6 +674,58 @@ main :: proc()
           }
         }
       }
+      case .LB: fallthrough
+      case .LH: fallthrough
+      case .LW:
+      {
+        dest, err0 := operand_from_operands(operands[:], 0)
+        src, err1  := operand_from_operands(operands[:], 1)
+        off, err2  := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          src_address := cast(Address) off.(Number)
+          switch v in src
+          {
+            case Number:     src_address += cast(Address) v
+            case RegisterID: src_address += cast(Address) sim.registers[v]
+          }
+
+          @(static)
+          size := [?]int{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
+
+          bytes := memory_load_bytes(src_address, size[opcode.opcode_type])
+          value := value_from_bytes(bytes)
+          sim.registers[dest.(RegisterID)] = value
+        }
+      }
+      case .SB: fallthrough
+      case .SH: fallthrough
+      case .SW:
+      {
+        src, err0  := operand_from_operands(operands[:], 0)
+        dest, err1 := operand_from_operands(operands[:], 1)
+        off, err2  := operand_from_operands(operands[:], 2)
+
+        error = err0 || err1 || err2
+        if !error
+        {
+          dest_address := cast(Address) off.(Number)
+          switch v in dest
+          {
+            case Number:     dest_address += cast(Address) v
+            case RegisterID: dest_address += cast(Address) sim.registers[v]
+          }
+
+          @(static)
+          size := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
+
+          value := sim.registers[src.(RegisterID)]
+          bytes := bytes_from_value(value, size[opcode.opcode_type])
+          memory_store_bytes(dest_address, bytes)
+        }
+      }
     }
 
     if error
@@ -671,7 +744,7 @@ main :: proc()
     if !(sim.step_to_next && line_num < sim.line_count - 1)
     {
       fmt.print("\n")
-    }
+    }  
   }
 }
 

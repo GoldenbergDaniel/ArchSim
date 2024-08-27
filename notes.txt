@@ -10,7 +10,7 @@ TODO
   [_] pc register
   [X] memory (load/store)
   [_] memory view
-  [_] l, s
+  [X] l, s
   [_] the stack
   [X] breakpoints
   [_] disk storage (syscalls)
