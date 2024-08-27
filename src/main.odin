@@ -4,11 +4,11 @@ MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-BASE_ADDRESS     :: 0x10000000
+BASE_ADDRESS     :: 0x1000_0000
 INSTRUCTION_SIZE :: 4
 
-Address :: distinct u64
-Number  :: distinct i64
+Address :: distinct u32
+Number  :: distinct i32
 
 Simulator :: struct
 {
@@ -40,6 +40,7 @@ OpcodeType :: enum
   OR,
   XOR,
   NOT,
+  NEG,
   SLL,
   SRL,
   SRA,
@@ -52,7 +53,17 @@ OpcodeType :: enum
   BEQ,
   BNE,
   BLT,
+  BGT,
+  BLE,
   BGE,
+  BEQZ,
+  BNEZ,
+  BLTZ,
+  BGTZ,
+  BLEZ,
+  BGEZ,
+
+  LUI,
 }
 
 RegisterID :: enum
@@ -63,8 +74,6 @@ RegisterID :: enum
   X8, X9, X10, X11, X12, X13, X14, X15, 
   X16, X17, X18, X19, X20, X21, X22, X23, 
   X24, X25, X26, X27, X28, X29, X30, X31, 
-
-  LR,
 }
 
 Operand :: union
@@ -74,30 +83,41 @@ Operand :: union
 }
 
 opcode_table: map[string]OpcodeType = {
-  ""     = .NIL,
+  ""      = .NIL,
 
-  "nop"  = .NOP,
-  "mv"   = .MV,
+  "nop"   = .NOP,
+  "mv"    = .MV,
 
-  "add"  = .ADD,
-  "sub"  = .SUB,
-  "and"  = .AND,
-  "or"   = .OR,
-  "xor"  = .XOR,
-  "npt"  = .NOT,
-  "sll"  = .SLL,
-  "srl"  = .SRL,
-  "sra"  = .SRA,
+  "add"   = .ADD,
+  "sub"   = .SUB,
+  "and"   = .AND,
+  "or"    = .OR,
+  "xor"   = .XOR,
+  "not"   = .NOT,
+  "neg"   = .NEG,
+  "sll"   = .SLL,
+  "srl"   = .SRL,
+  "sra"   = .SRA,
 
-  "j"    = .J,
-  "jr"   = .JR,
-  "jal"  = .JAL,
-  "jalr" = .JALR,
+  "j"     = .J,
+  "jr"    = .JR,
+  "jal"   = .JAL,
+  "jalr"  = .JALR,
 
-  "beq"  = .BEQ,
-  "bne"  = .BNE,
-  "blt"  = .BLT,
-  "bge"  = .BGE,
+  "beq"   = .BEQ,
+  "bne"   = .BNE,
+  "blt"   = .BLT,
+  "bgt"   = .BGT,
+  "ble"   = .BLE,
+  "bge"   = .BGE,
+  "beqz"  = .BEQZ,
+  "bnez"  = .BNEZ,
+  "bltz"  = .BLTZ,
+  "bgtz"  = .BGTZ,
+  "blez"  = .BLEZ,
+  "bgez"  = .BGEZ,
+
+  "lui"   = .LUI,
 }
 
 sim: Simulator
@@ -113,7 +133,7 @@ main :: proc()
   // fmt.println("  Memory:", sim.memory[0:4])
   // fmt.println("Expected:", 510)
   // fmt.println("  Actual:", value)
-  
+
   // if true do return
 
   tui_print_welcome()
@@ -484,9 +504,11 @@ main :: proc()
       case .OR:  fallthrough
       case .XOR: fallthrough
       case .NOT: fallthrough
+      case .NEG: fallthrough
       case .SLL: fallthrough
       case .SRL: fallthrough
-      case .SRA:
+      case .SRA: fallthrough
+      case .LUI:
       {
         dest_reg, err0 := operand_from_operands(operands[:], 0)
         op1_reg,  err1 := operand_from_operands(operands[:], 1)
@@ -512,24 +534,34 @@ main :: proc()
           result: Number
           #partial switch instruction.tokens[0].opcode_type
           {
-            case .ADD: result = val1 + val2
-            case .SUB: result = val1 - val2
-            case .AND: result = val1 & val2
-            case .OR:  result = val1 | val2
-            case .XOR: result = val1 | val2
-            case .NOT: result = ~val1
-            case .SLL: result = val1 << u64(val2)
-            case .SRL: {}
-            case .SRA: result = val1 >> u64(val2)
+            case .ADD:   result = val1 + val2
+            case .SUB:   result = val1 - val2
+            case .AND:   result = val1 & val2
+            case .OR:    result = val1 | val2
+            case .XOR:   result = val1 | val2
+            case .NOT:   result = ~val1
+            case .NEG:   result = -result
+            case .SLL:   result = val1 << u64(val2)
+            case .SRL:   {}
+            case .SRA:   result = val1 >> u64(val2)
+            case .LUI:   result = val1 << 12
           }
 
           sim.registers[dest_reg.(RegisterID)] = result
         }
       }
-      case .BEQ: fallthrough
-      case .BNE: fallthrough
-      case .BLT: fallthrough
-      case .BGE:
+      case .BEQ:  fallthrough
+      case .BNE:  fallthrough
+      case .BLT:  fallthrough
+      case .BGT:  fallthrough
+      case .BLE:  fallthrough
+      case .BGE:  fallthrough
+      case .BEQZ: fallthrough
+      case .BNEZ: fallthrough
+      case .BLTZ: fallthrough
+      case .BGTZ: fallthrough
+      case .BLEZ: fallthrough
+      case .BGEZ:
       {
         oper1, err0 := operand_from_operands(operands[:], 0)
         oper2, err1 := operand_from_operands(operands[:], 1)
@@ -555,10 +587,18 @@ main :: proc()
           should_jump: bool
           #partial switch opcode.opcode_type
           {
-            case .BEQ: should_jump = val1 == val2
-            case .BNE: should_jump = val1 != val2
-            case .BLT: should_jump = val1 < val2
-            case .BGE: should_jump = val1 >= val2
+            case .BEQ:  should_jump = val1 == val2
+            case .BNE:  should_jump = val1 != val2
+            case .BLT:  should_jump = val1 < val2
+            case .BGT:  should_jump = val1 > val2
+            case .BLE:  should_jump = val1 <= val2
+            case .BGE:  should_jump = val1 >= val2
+            case .BEQZ: should_jump = val1 == 0
+            case .BNEZ: should_jump = val1 != 0
+            case .BLTZ: should_jump = val1 < 0
+            case .BGTZ: should_jump = val1 > 0
+            case .BLEZ: should_jump = val1 <= 0
+            case .BGEZ: should_jump = val1 >= 0
           }
 
           if should_jump
@@ -599,12 +639,12 @@ main :: proc()
             case .JAL:
             {
               should_jump = true
-              sim.registers[.LR] = cast(Number) target_line_num + 1
+              sim.registers[.X1] = cast(Number) target_line_num + 1
             }
             case .JALR:
             {
               should_jump = true
-              sim.registers[.LR] = cast(Number) target_line_num + 1
+              sim.registers[.X1] = cast(Number) target_line_num + 1
               target_line_num = line_index_from_address(Address(target_line_num))
             }
           }
@@ -772,7 +812,7 @@ bytes_from_value :: proc(value: Number, size: int) -> []byte
   return result
 }
 
-// @Token ///////////////////////////////////////////////////////////////////////////////
+// @Token /////////////////////////////////////////////////////////////////////////////
 
 Token :: struct
 {
@@ -880,7 +920,7 @@ print_tokens_at :: proc(line_num: int)
   fmt.print("\n")
 }
 
-// @ParserError /////////////////////////////////////////////////////////////////////////
+// @ParserError ///////////////////////////////////////////////////////////////////////
 
 ParserError :: union
 {
@@ -956,7 +996,7 @@ resolve_parser_error :: proc(error: ParserError) -> bool
   return true
 }
 
-// @Imports /////////////////////////////////////////////////////////////////////////////
+// @Imports ////////////////////////////////////////////////////////////////////////////
 
 import "core:fmt"
 import "core:os"

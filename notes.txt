@@ -6,7 +6,8 @@ TODO
   [X] logical operators (and, or, xor, not)
   [X] conditional branching
   [X] standardize instruction addresses (jr, jalr)
-  [~] register view
+  [X] register view
+  [_] pc register
   [X] memory (load/store)
   [_] memory view
   [_] l, s
@@ -21,8 +22,12 @@ BREAKPOINTS
   - to clear:  break clear
   - to list:   break list
 
+VIEW
+  - registers: view reg T
+  - memory:    view mem
+
 MEMORY
- - 0x'00000000'10000000 <-> 0x'00000000'1000FFFF
+ - 0x'0000'0000'1000'0000 <-> 0x'0000'0000'1000'FFFF
 
 SYSCALLS
   - open

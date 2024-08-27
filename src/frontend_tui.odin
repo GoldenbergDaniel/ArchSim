@@ -21,10 +21,13 @@ TUI_CommandType :: enum
 TUI_RegisterViewType :: enum
 {
   ALL,
-  POINTERS,
   TEMPORARIES,
   SAVED,
+  ARGUMENTS,
+  EXTRAS,
 }
+
+TUI_RegisterViewTypeSet :: bit_set[TUI_RegisterViewType]
 
 @(private="file")
 command_table: map[string]TUI_CommandType = {
@@ -53,7 +56,7 @@ register_names: [RegisterID]string = {
   .X5  = "t0",
   .X6  = "t1",
   .X7  = "t2",
-  .X8  = "s0",
+  .X8  = "fp",
   .X9  = "s1",
   .X10 = "a0",
   .X11 = "a1",
@@ -77,7 +80,6 @@ register_names: [RegisterID]string = {
   .X29 = "t4",
   .X30 = "t5",
   .X31 = "t6",
-  .LR  = "",
 }
 
 tui_prompt_command :: proc() -> bool
@@ -208,7 +210,31 @@ tui_prompt_command :: proc() -> bool
     {
       if command.args[0] == "r" || command.args[0] == "reg"
       {
-        tui_print_register_view({.ALL})
+        set: TUI_RegisterViewTypeSet
+
+        switch command.args[1]
+        {
+          case "":    set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
+
+          case "all": set = {.ALL}
+
+          case "temps": fallthrough
+          case "temp":  fallthrough
+          case "t":     set = {.TEMPORARIES}
+
+          case "saved": fallthrough
+          case "s":     set = {.SAVED}
+
+          case "args": fallthrough
+          case "arg":  fallthrough
+          case "a":    set = {.ARGUMENTS}
+
+          case "extras": fallthrough
+          case "extra":  fallthrough
+          case "x":      set = {.EXTRAS}
+        }
+
+        tui_print_register_view(set)
       }
     }
     case .NONE:
@@ -312,7 +338,8 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
   }
 }
 
-tui_print_register_view :: proc(which: bit_set[TUI_RegisterViewType])
+// @TODO(dg): THIS.
+tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
 {
   // Print temporaries
   if .TEMPORARIES in which || .ALL in which
@@ -335,7 +362,35 @@ tui_print_register_view :: proc(which: bit_set[TUI_RegisterViewType])
 
     for reg in RegisterID
     {
-      if (reg >= .X18 && reg <= .X27)
+      if reg == .X8 || reg == .X9 || (reg >= .X18 && reg <= .X27)
+      {
+        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+      }
+    }
+  }
+
+  // Print arguments
+  if .ARGUMENTS in which || .ALL in which
+  {
+    fmt.print("[ARGUMENTS]\n")
+
+    for reg in RegisterID
+    {
+      if reg >= .X10 && reg <= .X17
+      {
+        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+      }
+    }
+  }
+
+  // Print extras
+  if .EXTRAS in which || .ALL in which
+  {
+    fmt.print("[EXTRAS]\n")
+
+    for reg in RegisterID
+    {
+      if reg >= .X1 && reg <= .X4
       {
         fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
       }
