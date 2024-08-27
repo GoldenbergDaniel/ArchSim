@@ -23,7 +23,7 @@ BREAKPOINTS
   - to list:   break list
 
 VIEW
-  - registers: view reg T
+  - registers: view reg G
   - memory:    view mem
 
 MEMORY

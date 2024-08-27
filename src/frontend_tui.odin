@@ -20,14 +20,13 @@ TUI_CommandType :: enum
 
 TUI_RegisterViewType :: enum
 {
-  ALL,
   TEMPORARIES,
   SAVED,
   ARGUMENTS,
   EXTRAS,
 }
 
-TUI_RegisterViewTypeSet :: bit_set[TUI_RegisterViewType]
+TUI_RegisterViewSet :: bit_set[TUI_RegisterViewType]
 
 @(private="file")
 command_table: map[string]TUI_CommandType = {
@@ -47,7 +46,6 @@ command_table: map[string]TUI_CommandType = {
 }
 
 register_names: [RegisterID]string = {
-  .NIL = "",
   .X0  = "",
   .X1  = "ra",
   .X2  = "sp",
@@ -210,28 +208,15 @@ tui_prompt_command :: proc() -> bool
     {
       if command.args[0] == "r" || command.args[0] == "reg"
       {
-        set: TUI_RegisterViewTypeSet
-
+        set: TUI_RegisterViewSet
         switch command.args[1]
         {
-          case "":    set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
-
-          case "all": set = {.ALL}
-
-          case "temps": fallthrough
-          case "temp":  fallthrough
-          case "t":     set = {.TEMPORARIES}
-
-          case "saved": fallthrough
-          case "s":     set = {.SAVED}
-
-          case "args": fallthrough
-          case "arg":  fallthrough
-          case "a":    set = {.ARGUMENTS}
-
-          case "extras": fallthrough
-          case "extra":  fallthrough
-          case "x":      set = {.EXTRAS}
+          case "":                     set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
+          case "all":                  set = {.TEMPORARIES, .SAVED, .ARGUMENTS, .EXTRAS}
+          case "temps", "temp", "t":   set = {.TEMPORARIES}
+          case "saved", "s":           set = {.SAVED}
+          case "args", "arg", "a":     set = {.ARGUMENTS}
+          case "extras", "extra", "x": set = {.EXTRAS}
         }
 
         tui_print_register_view(set)
@@ -339,12 +324,12 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
 }
 
 // @TODO(dg): THIS.
-tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
+tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 {
   // Print temporaries
-  if .TEMPORARIES in which || .ALL in which
+  if .TEMPORARIES in which
   {
-    fmt.print("[TEMPORARIES]\n")
+    fmt.print("[temporaries]\n")
 
     for reg in RegisterID
     {
@@ -356,9 +341,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
   }
 
   // Print saved
-  if .SAVED in which || .ALL in which
+  if .SAVED in which
   {
-    fmt.print("[SAVED]\n")
+    fmt.print("[saved]\n")
 
     for reg in RegisterID
     {
@@ -370,9 +355,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
   }
 
   // Print arguments
-  if .ARGUMENTS in which || .ALL in which
+  if .ARGUMENTS in which
   {
-    fmt.print("[ARGUMENTS]\n")
+    fmt.print("[arguments]\n")
 
     for reg in RegisterID
     {
@@ -384,9 +369,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
   }
 
   // Print extras
-  if .EXTRAS in which || .ALL in which
+  if .EXTRAS in which
   {
-    fmt.print("[EXTRAS]\n")
+    fmt.print("[extras]\n")
 
     for reg in RegisterID
     {
@@ -400,21 +385,21 @@ tui_print_register_view :: proc(which: TUI_RegisterViewTypeSet)
 
 tui_print_commands_list :: proc()
 {
-  fmt.print(" q, quit    |   quit simulator\n")
-  fmt.print(" s, step    |   step to next instruction\n")
-  fmt.print(" r, run     |   continue to next breakpoint\n")
-  fmt.print(" b, break   |   breakpoints\n")
-  fmt.print("  'X'       |   peak breakpoint at 'X'\n")
-  fmt.print("  set 'X'   |   set breakpoint at 'X'\n")
-  fmt.print("  rem 'X'   |   remove breakpoint at 'X'\n")
-  fmt.print("  clear     |   clear breakpoints\n")
-  fmt.print("  list      |   list breakpoints\n")
-  fmt.print(" v, view    |   view simulator contents\n")
-  fmt.print("  r, reg    |   view registers\n")
-  fmt.print("  m, mem    |   view memory (NOT IMPLEMENTED)\n")
+  fmt.print(" q, quit       |   quit simulator\n")
+  fmt.print(" s, step       |   step to next instruction\n")
+  fmt.print(" r, run        |   continue to next breakpoint\n")
+  fmt.print(" b, break      |   breakpoints\n")
+  fmt.print("  'X'          |   peak breakpoint at 'X'\n")
+  fmt.print("  set 'X'      |   set breakpoint at 'X'\n")
+  fmt.print("  rem 'X'      |   remove breakpoint at 'X'\n")
+  fmt.print("  clear        |   clear breakpoints\n")
+  fmt.print("  list         |   list breakpoints\n")
+  fmt.print(" v, view       |   view simulator contents\n")
+  fmt.print("  r, reg 'G'   |   view registers of group 'G'\n")
+  fmt.print("  m, mem       |   view memory (NOT IMPLEMENTED)\n")
 }
 
-// @Error ///////////////////////////////////////////////////////////////////////////////
+// @Error /////////////////////////////////////////////////////////////////////////////
 
 TUI_Error :: union
 {

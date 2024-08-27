@@ -68,8 +68,6 @@ OpcodeType :: enum
 
 RegisterID :: enum
 {
-  NIL, 
-
   X0, X1, X2, X3, X4, X5, X6, X7, 
   X8, X9, X10, X11, X12, X13, X14, X15, 
   X16, X17, X18, X19, X20, X21, X22, X23, 
@@ -850,14 +848,38 @@ register_from_token :: proc(token: Token) -> (RegisterID, bool)
 
   switch token.data
   {
-    case "x0": result = .X0
-    case "t0": result = .X5
-    case "t1": result = .X6
-    case "t2": result = .X7
-    case "t3": result = .X28
-    case "t4": result = .X29
-    case "t5": result = .X30
-    case "t6": result = .X31
+    case "x0", "zero": result = .X0
+    case "x1", "ra":   result = .X1
+    case "x2", "sp":   result = .X2
+    case "x3", "gp":   result = .X3
+    case "x4", "tp":   result = .X4
+    case "x5", "t0":   result = .X5
+    case "x6", "t1":   result = .X6
+    case "x7", "t2":   result = .X7
+    case "x8", "fp":   result = .X8
+    case "x9", "s1":   result = .X9
+    case "x10", "a0":  result = .X10
+    case "x11", "a1":  result = .X11
+    case "x12", "a2":  result = .X12
+    case "x13", "a3":  result = .X13
+    case "x14", "a4":  result = .X14
+    case "x15", "a5":  result = .X15
+    case "x16", "a6":  result = .X16
+    case "x17", "a7":  result = .X17
+    case "x18", "s2":  result = .X18
+    case "x19", "s3":  result = .X19
+    case "x20", "s4":  result = .X20
+    case "x21", "s5":  result = .X21
+    case "x22", "s6":  result = .X22
+    case "x23", "s7":  result = .X23
+    case "x24", "s8":  result = .X24
+    case "x25", "s9":  result = .X25
+    case "x26", "s10": result = .X26
+    case "x27", "s11": result = .X27
+    case "x28", "t3":  result = .X28
+    case "x29", "t4":  result = .X29
+    case "x30", "t5":  result = .X30
+    case "x31", "t6":  result = .X31
     case: err = true
   }
 
