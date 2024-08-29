@@ -1,9 +1,12 @@
 $define ADDRESS 0x10000FF0
 
-$section .text
-      add t0, t0, 2300 
-      sh  t0, ADDRESS[0]
-      lb  t0, ADDRESS[0]
-      lb  t1, ADDRESS[1]
-      lh  t2, ADDRESS[0]
+$byte BYTE 0xAA
+$half HALF 0xBBBB
+$word WORD 0xCCCCCCCC
+
+$text
+      add t0, t0, 3
+      sb  t0, ADDRESS[0]
+      lh  t1, ADDRESS[0]
+      lb  t2, ADDRESS[1]
 EXIT: nop

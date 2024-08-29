@@ -347,10 +347,14 @@ main :: proc()
 
   // Preprocess ----------------
   {
+    data_offset: Address
+
     for line_num := 0; line_num < sim.line_count; line_num += 1
     {
+      defer free_all(context.temp_allocator)
+
       if sim.instructions[line_num].tokens == nil do continue
-      
+
       instruction := sim.instructions[line_num]
 
       // Directives
@@ -362,18 +366,42 @@ main :: proc()
         {
           case "$define":
           {
-            val := Number(str_to_int(instruction.tokens[2].data))
+            val := cast(Number) str_to_int(instruction.tokens[2].data)
             sim.symbol_table[instruction.tokens[1].data] = val
           }
-          case "$section":
+          case "$byte":
           {
-            section := instruction.tokens[1].data
-            switch section
-            {
-              case ".data": sim.data_section_pos = line_num + 1
-              case ".text": sim.text_section_pos = line_num + 1
-              case: {}
-            }
+            val := cast(Number) str_to_int(instruction.tokens[2].data)
+            bytes := bytes_from_value(val, 1)
+
+            address := BASE_ADDRESS + data_offset
+            memory_store_bytes(address, bytes)
+            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+            data_offset += 1
+          }
+          case "$half":
+          {
+            val := cast(Number) str_to_int(instruction.tokens[2].data)
+            bytes := bytes_from_value(val, 2)
+
+            address := BASE_ADDRESS + data_offset
+            memory_store_bytes(address, bytes)
+            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+            data_offset += 2
+          }
+          case "$word":
+          {
+            val := cast(Number) str_to_int(instruction.tokens[2].data)
+            bytes := bytes_from_value(val, 4)
+
+            address := BASE_ADDRESS + data_offset
+            memory_store_bytes(address, bytes)
+            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+            data_offset += 4
+          }
+          case "$text":
+          {
+            sim.text_section_pos = line_num + 1
           }
         }
       }
@@ -382,7 +410,7 @@ main :: proc()
       if instruction.tokens[0].type == .IDENTIFIER && 
          instruction.tokens[1].type == .COLON
       {
-        sim.symbol_table[instruction.tokens[0].data] = Number(line_num)
+        sim.symbol_table[instruction.tokens[0].data] = cast(Number) line_num
       }
     }
   }
@@ -763,6 +791,11 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   }
 
   return end
+}
+
+address_is_valid :: proc(address: Address) -> bool
+{
+  return address >= BASE_ADDRESS && address <= BASE_ADDRESS + MEMORY_SIZE
 }
 
 address_from_line_index :: proc(line_num: int) -> Address

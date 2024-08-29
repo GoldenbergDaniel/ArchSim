@@ -28,6 +28,13 @@ TUI_RegisterViewType :: enum
 
 TUI_RegisterViewSet :: bit_set[TUI_RegisterViewType]
 
+TUI_Base :: enum
+{
+  BIN,
+  DEC,
+  HEX,
+}
+
 @(private="file")
 command_table: map[string]TUI_CommandType = {
   "q"     = .QUIT,
@@ -79,6 +86,9 @@ register_names: [RegisterID]string = {
   .X30 = "t5",
   .X31 = "t6",
 }
+
+@(private="file")
+mem_view_base: TUI_Base = .HEX
 
 tui_prompt_command :: proc() -> bool
 {
@@ -221,6 +231,65 @@ tui_prompt_command :: proc() -> bool
 
         tui_print_register_view(set)
       }
+      else if command.args[0] == "m" || 
+              command.args[0] == "mem" || 
+              command.args[0] == "meme"
+      {
+        // fmt.println(command.args)
+        address: Address
+        if str_is_numeric(command.args[1])
+        {
+          address = cast(Address) str_to_int(command.args[1])
+        }
+        else 
+        {
+          reg, err := register_from_token(Token{data=command.args[1]})
+          if !err
+          {
+            address = cast(Address) sim.registers[reg]
+          }
+          else
+          {
+            val, ok := sim.symbol_table[command.args[1]]
+            if !ok
+            {
+              fmt.println("ERROR: Invalid address")
+              done = false
+              return done
+            }
+            else
+            {
+              address = cast(Address) val
+            }
+          }
+        }
+
+        offset: int
+        if str_is_numeric(command.args[2])
+        {
+          offset = str_to_int(command.args[2])
+        }
+
+        tui_print_memory_view(address + Address(offset), mem_view_base)
+      }
+      else if command.args[0] == "base" || command.args[0] == "mode"
+      {
+        err: bool
+        switch command.args[1]
+        {
+          case "2", "bin", "binary": mem_view_base = .BIN
+          case "10", "dec", "decimal": mem_view_base = .DEC
+          case "16", "hex", "hexadecimal": mem_view_base = .HEX
+          case: err = true
+        }
+
+        if err
+        {
+          term.color(.RED)
+          fmt.print("Invalid base. Must be 2, 10, or 16.\n")
+          term.color(.WHITE)
+        }
+      }
     }
     case .NONE:
     {
@@ -235,7 +304,7 @@ tui_prompt_command :: proc() -> bool
   return done
 }
 
-// DOC(dg): Expects a string without leading whitespace
+// @DOC(dg): Expects a string without leading whitespace
 tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
 {
   result: TUI_Command
@@ -248,7 +317,7 @@ tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
   }
 
   start, end: int
-  for i := 0; i <= 3 && end < length; i += 1
+  for i := 0; i <= len(result.args) && end < length; i += 1
   {
     end = str_find_char(str, ' ', start)
     if end == -1 do end = length
@@ -379,6 +448,31 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
         fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
       }
     }
+  }
+}
+
+tui_print_memory_view :: proc(address: Address, base: TUI_Base)
+{
+  for a in address-3..=address+3 do if address_is_valid(a)
+  {
+    if a == address
+    {
+      term.color(.GREEN)
+      fmt.print(" > ")
+    }
+    else
+    {
+      fmt.print("   ")
+    }
+
+    switch base
+    {
+      case .BIN: fmt.printf("%X : %b\n", a, sim.memory[a - BASE_ADDRESS])
+      case .DEC: fmt.printf("%X : %i\n", a, sim.memory[a - BASE_ADDRESS])
+      case .HEX: fmt.printf("%X : %X\n", a, sim.memory[a - BASE_ADDRESS])
+    }
+    
+    term.color(.WHITE)
   }
 }
 

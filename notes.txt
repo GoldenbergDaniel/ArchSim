@@ -9,25 +9,26 @@ TODO
   [X] register view
   [_] pc register
   [X] memory (load/store)
-  [_] memory view
+  [~] memory view
   [X] l, s
   [_] the stack
   [X] breakpoints
   [_] disk storage (syscalls)
 
 BREAKPOINTS
-  - to set:    break set X
-  - to remove: break rem X
-  - to peak:   break X
+  - to set:    break set 'X'
+  - to remove: break rem 'X'
+  - to peak:   break 'X'
   - to clear:  break clear
   - to list:   break list
 
 VIEW
-  - registers: view reg G
-  - memory:    view mem
+  - registers: view reg 'G'
+  - memory:    view mem 'A'
+  - config:    view base 'B'
 
 MEMORY
- - 0x'0000'0000'1000'0000 <-> 0x'0000'0000'1000'FFFF
+ - 0x'1000'0000 <-> 0x'1000'FFFF
 
 SYSCALLS
   - open
