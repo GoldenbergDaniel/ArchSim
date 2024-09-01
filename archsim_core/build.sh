@@ -12,5 +12,5 @@ if [[ $MODE == "dbg" ]]; then FLAGS="-o:none -debug"; fi
 if [[ $MODE == "rls" ]]; then FLAGS="-o:speed -no-bounds-check -no-type-assert"; fi
 
 if [[ ! -d "out" ]]; then mkdir out; fi
-export ODIN_ROOT="odin"
+export ODIN_ROOT="../odin"
 odin build $SRC -out:out/$OUT $FLAGS -collection:ext=ext/
