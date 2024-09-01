@@ -1,5 +1,5 @@
 # ArchSim
-Simulate a fantasy assembly language from the command line. W.I.P.
+Simulate RISC-V from the command line or browser (W.I.P.)
 
 The assembly program can be found in `data/main.asm`.
 
@@ -9,7 +9,7 @@ In order to build from source, the only external dependency is MSVC (Visual Stud
 2. Run the following commands
 ```bash
 ./build.sh r || build.bat r
-./archsim || archsim.exe
+out/archsim || out/archsim.exe
 ```
 
 **NOTE**: On macOS, you may need to run the following command before running `./build.sh` to give the Odin compiler permission to execute.
