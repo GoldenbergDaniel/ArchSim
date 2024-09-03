@@ -1,9 +1,18 @@
 //+private
 package testing
 
+/*
+	(c) Copyright 2024 Feoramund <rune@swevencraft.org>.
+	Made available under Odin's BSD-3 license.
+
+	List of contributors:
+		Ginger Bill: Initial implementation.
+		Feoramund:   Total rewrite.
+*/
+
 import "base:runtime"
 import "core:fmt"
-import pkg_log "core:log"
+import "core:log"
 import "core:strings"
 import "core:sync/chan"
 import "core:time"
@@ -72,9 +81,9 @@ format_log_text :: proc(level: runtime.Logger_Level, text: string, options: runt
 	backing: [1024]byte
 	buf := strings.builder_from_bytes(backing[:])
 
-	pkg_log.do_level_header(options, &buf, level)
-	pkg_log.do_time_header(options, &buf, at_time)
-	pkg_log.do_location_header(options, &buf, location)
+	log.do_level_header(options, &buf, level)
+	log.do_time_header(options, &buf, at_time)
+	log.do_location_header(options, &buf, location)
 
 	return fmt.aprintf("%s%s", strings.to_string(buf), text, allocator = allocator)
 }

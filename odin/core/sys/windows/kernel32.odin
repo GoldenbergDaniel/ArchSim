@@ -51,18 +51,14 @@ foreign kernel32 {
 	// https://learn.microsoft.com/en-us/windows/console/getnumberofconsoleinputevents
 	GetNumberOfConsoleInputEvents :: proc(hConsoleInput: HANDLE, lpcNumberOfEvents: LPDWORD) -> BOOL ---
 
-	GetConsoleMode :: proc(hConsoleHandle: HANDLE,
-	                       lpMode: LPDWORD) -> BOOL ---
-	SetConsoleMode :: proc(hConsoleHandle: HANDLE,
-	                       dwMode: DWORD) -> BOOL ---
-	SetConsoleCursorPosition :: proc(hConsoleHandle: HANDLE,
-	                                 dwCursorPosition: COORD) -> BOOL ---
-	SetConsoleTextAttribute :: proc(hConsoleOutput: HANDLE,
-	                                wAttributes: WORD) -> BOOL ---
-	GetConsoleCP :: proc() -> UINT ---
-	SetConsoleCP :: proc(wCodePageID: UINT) -> BOOL ---
-	GetConsoleOutputCP :: proc() -> UINT ---
-	SetConsoleOutputCP :: proc(wCodePageID: UINT) -> BOOL ---
+	GetConsoleMode :: proc(hConsoleHandle: HANDLE, lpMode: LPDWORD) -> BOOL ---
+	SetConsoleMode :: proc(hConsoleHandle: HANDLE, dwMode: DWORD) -> BOOL ---
+	SetConsoleCursorPosition :: proc(hConsoleHandle: HANDLE, dwCursorPosition: COORD) -> BOOL ---
+	SetConsoleTextAttribute :: proc(hConsoleOutput: HANDLE, wAttributes: WORD) -> BOOL ---
+	GetConsoleCP :: proc() -> CODEPAGE ---
+	SetConsoleCP :: proc(wCodePageID: CODEPAGE) -> BOOL ---
+	GetConsoleOutputCP :: proc() -> CODEPAGE ---
+	SetConsoleOutputCP :: proc(wCodePageID: CODEPAGE) -> BOOL ---
 	FlushConsoleInputBuffer :: proc(hConsoleInput: HANDLE) -> BOOL ---
 
 	GetFileInformationByHandle :: proc(hFile: HANDLE, lpFileInformation: LPBY_HANDLE_FILE_INFORMATION) -> BOOL ---
@@ -88,6 +84,10 @@ foreign kernel32 {
 	CreateHardLinkW :: proc(lpSymlinkFileName: LPCWSTR,
 	                        lpTargetFileName: LPCWSTR,
 	                        lpSecurityAttributes: LPSECURITY_ATTRIBUTES) -> BOOL ---
+
+	CreateSymbolicLinkW :: proc(lpSymlinkFileName: LPCWSTR,
+	                            lpTargetFileName:  LPCWSTR,
+	                            dwFlags:           DWORD) -> BOOLEAN ---
 
 	GetFileInformationByHandleEx :: proc(hFile: HANDLE,
 	                                     fileInfoClass: FILE_INFO_BY_HANDLE_CLASS,
@@ -233,6 +233,12 @@ foreign kernel32 {
 	QueryPerformanceCounter :: proc(lpPerformanceCount: ^LARGE_INTEGER) -> BOOL ---
 	GetExitCodeProcess :: proc(hProcess: HANDLE, lpExitCode: LPDWORD) -> BOOL ---
 	TerminateProcess :: proc(hProcess: HANDLE, uExitCode: UINT) -> BOOL ---
+	OpenProcess :: proc(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwProcessId: DWORD) -> HANDLE ---
+	OpenThread :: proc(dwDesiredAccess: DWORD, bInheritHandle: BOOL, dwThreadId: DWORD) -> HANDLE ---
+	GetThreadContext :: proc(
+		hThread: HANDLE,
+		lpContext: LPCONTEXT,
+	) -> BOOL ---
 	CreateProcessW :: proc(
 		lpApplicationName: LPCWSTR,
 		lpCommandLine: LPWSTR,
@@ -250,6 +256,7 @@ foreign kernel32 {
 	SetEnvironmentVariableW :: proc(n: LPCWSTR, v: LPCWSTR) -> BOOL ---
 	GetEnvironmentStringsW :: proc() -> LPWCH ---
 	FreeEnvironmentStringsW :: proc(env_ptr: LPWCH) -> BOOL ---
+	ExpandEnvironmentStringsW :: proc(lpSrc: LPCWSTR, lpDst: LPWSTR, nSize: DWORD) -> DWORD ---
 	GetModuleFileNameW :: proc(hModule: HMODULE, lpFilename: LPWSTR, nSize: DWORD) -> DWORD ---
 	CreateDirectoryW :: proc(
 		lpPathName: LPCWSTR,
@@ -393,6 +400,9 @@ foreign kernel32 {
 	GlobalAlloc :: proc(flags: UINT, bytes: SIZE_T) -> LPVOID ---
 	GlobalReAlloc :: proc(mem: LPVOID, bytes: SIZE_T, flags: UINT) -> LPVOID ---
 	GlobalFree :: proc(mem: LPVOID) -> LPVOID ---
+	
+	GlobalLock :: proc(hMem: HGLOBAL) -> LPVOID ---
+	GlobalUnlock :: proc(hMem: HGLOBAL) -> BOOL ---
 
 	ReadDirectoryChangesW :: proc(
 		hDirectory: HANDLE,
@@ -434,12 +444,34 @@ foreign kernel32 {
 	GetFileAttributesExW :: proc(lpFileName: LPCWSTR, fInfoLevelId: GET_FILEEX_INFO_LEVELS, lpFileInformation: LPVOID) -> BOOL ---
 	GetSystemInfo :: proc(system_info: ^SYSTEM_INFO) ---
 	GetVersionExW :: proc(osvi: ^OSVERSIONINFOEXW) ---
-
+	GetSystemDirectoryW :: proc(lpBuffer: LPWSTR, uSize: UINT) -> UINT ---
+	GetWindowsDirectoryW :: proc(lpBuffer: LPWSTR, uSize: UINT) -> UINT ---
+	GetSystemDefaultLangID :: proc() -> LANGID ---
+	GetSystemDefaultLCID :: proc() -> LCID ---
+	GetSystemDefaultLocaleName :: proc(lpLocaleName: LPWSTR, cchLocaleName: INT) -> INT ---
+	LCIDToLocaleName :: proc(Locale: LCID, lpName: LPWSTR, cchName: INT, dwFlags: DWORD) -> INT ---
+	LocaleNameToLCID :: proc(lpName: LPCWSTR, dwFlags: DWORD) -> LCID ---
+	SetDllDirectoryW :: proc(lpPathName: LPCWSTR) -> BOOL ---
+	AddDllDirectory :: proc(NewDirectory: PCWSTR) -> rawptr ---
+	RemoveDllDirectory :: proc(Cookie: rawptr) -> BOOL ---
 	LoadLibraryW :: proc(c_str: LPCWSTR) -> HMODULE ---
+	LoadLibraryExW :: proc(c_str: LPCWSTR, hFile: HANDLE, dwFlags: LoadLibraryEx_Flags) -> HMODULE ---
 	FreeLibrary :: proc(h: HMODULE) -> BOOL ---
 	GetProcAddress :: proc(h: HMODULE, c_str: LPCSTR) -> rawptr ---
-	LoadLibraryExW :: proc(c_str: LPCWSTR, file: HANDLE, flags: LoadLibraryEx_Flags) -> HMODULE ---
 
+	LoadResource :: proc(hModule: HMODULE, hResInfo: HRSRC) -> HGLOBAL ---
+	FreeResource :: proc(hResData: HGLOBAL) -> BOOL ---
+	LockResource :: proc(hResData: HGLOBAL) -> LPVOID ---
+	SizeofResource :: proc(hModule: HMODULE, hResInfo: HRSRC) -> DWORD ---
+	FindResourceW :: proc(hModule: HMODULE, lpName: LPCWSTR, lpType: LPCWSTR) -> HRSRC ---
+	FindResourceExW :: proc(hModule: HMODULE, lpType: LPCWSTR, lpName: LPCWSTR, wLanguage: LANGID) -> HRSRC ---
+	EnumResourceNamesW :: proc(hModule: HMODULE, lpType: LPCWSTR, lpEnumFunc: ENUMRESNAMEPROCW, lParam: LONG_PTR) -> BOOL ---
+	EnumResourceNamesExW :: proc(hModule: HMODULE, lpType: LPCWSTR, lpEnumFunc: ENUMRESNAMEPROCW, lParam: LONG_PTR, dwFlags: DWORD, LangId: LANGID) -> BOOL ---
+	EnumResourceTypesExW :: proc(hModule: HMODULE, lpEnumFunc: ENUMRESTYPEPROCW, lParam: LONG_PTR, dwFlags: DWORD, LangId: LANGID) -> BOOL ---
+	EnumResourceLanguagesExW :: proc(hModule: HMODULE, lpType: LPCWSTR, lpName: LPCWSTR, lpEnumFunc: ENUMRESLANGPROCW, lParam: LONG_PTR, dwFlags: DWORD, LangId: LANGID) -> BOOL ---
+	LookupIconIdFromDirectory :: proc(presbits: PBYTE, fIcon: BOOL) -> INT ---
+	LookupIconIdFromDirectoryEx :: proc(presbits: PBYTE, fIcon: BOOL, cxDesired: INT, cyDesired: INT, Flags: UINT) -> INT ---
+	CreateIconFromResourceEx :: proc(presbits: PBYTE, dwResSize: DWORD, fIcon: BOOL, dwVer: DWORD, cxDesired: INT, cyDesired: INT, Flags: UINT) -> HICON ---
 
 	GetFullPathNameW  :: proc(filename: LPCWSTR, buffer_length: DWORD, buffer: LPCWSTR, file_part: ^LPCWSTR) -> DWORD ---
 	GetLongPathNameW  :: proc(short, long: LPCWSTR, len: DWORD) -> DWORD ---
@@ -542,6 +574,45 @@ THREAD_PRIORITY_TIME_CRITICAL :: THREAD_BASE_PRIORITY_LOWRT
 THREAD_PRIORITY_IDLE          :: THREAD_BASE_PRIORITY_IDLE
 THREAD_MODE_BACKGROUND_BEGIN  :: 0x00010000
 THREAD_MODE_BACKGROUND_END    :: 0x00020000
+
+PROCESS_ALL_ACCESS :: 0x000F0000 | SYNCHRONIZE | 0xFFFF
+PROCESS_CREATE_PROCESS :: 0x0080
+PROCESS_CREATE_THREAD :: 0x0002
+PROCESS_DUP_HANDLE :: 0x0040
+PROCESS_QUERY_INFORMATION :: 0x0400
+PROCESS_QUERY_LIMITED_INFORMATION :: 0x1000
+PROCESS_SET_INFORMATION :: 0x0200
+PROCESS_SET_QUOTA :: 0x0100
+PROCESS_SUSPEND_RESUME :: 0x0800
+PROCESS_TERMINATE :: 0x0001
+PROCESS_VM_OPERATION :: 0x0008
+PROCESS_VM_READ :: 0x0010
+PROCESS_VM_WRITE :: 0x0020
+
+THREAD_ALL_ACCESS :: \
+	THREAD_DIRECT_IMPERSONATION |
+	THREAD_GET_CONTEXT |
+	THREAD_IMPERSONATE |
+	THREAD_QUERY_INFORMATION |
+	THREAD_QUERY_LIMITED_INFORMATION |
+	THREAD_SET_CONTEXT |
+	THREAD_SET_INFORMATION |
+	THREAD_SET_LIMITED_INFORMATION |
+	THREAD_SET_THREAD_TOKEN |
+	THREAD_SUSPEND_RESUME |
+	THREAD_TERMINATE |
+	SYNCHRONIZE
+THREAD_DIRECT_IMPERSONATION :: 0x0200
+THREAD_GET_CONTEXT :: 0x0008
+THREAD_IMPERSONATE :: 0x0100
+THREAD_QUERY_INFORMATION :: 0x0040
+THREAD_QUERY_LIMITED_INFORMATION :: 0x0800
+THREAD_SET_CONTEXT :: 0x0010
+THREAD_SET_INFORMATION :: 0x0020
+THREAD_SET_LIMITED_INFORMATION :: 0x0400
+THREAD_SET_THREAD_TOKEN :: 0x0080
+THREAD_SUSPEND_RESUME :: 0x0002
+THREAD_TERMINATE :: 0x0001
 
 COPY_FILE_FAIL_IF_EXISTS              :: 0x00000001
 COPY_FILE_RESTARTABLE                 :: 0x00000002
@@ -1107,17 +1178,17 @@ SYSTEM_POWER_STATUS :: struct {
 }
 
 AC_Line_Status :: enum BYTE {
-   Offline = 0,
-   Online  = 1,
-   Unknown = 255,
+	Offline = 0,
+	Online  = 1,
+	Unknown = 255,
 }
 
 Battery_Flag :: enum BYTE {
-    High     = 0,
-    Low      = 1,
-    Critical = 2,
-    Charging = 3,
-    No_Battery = 7,
+	High     = 0,
+	Low      = 1,
+	Critical = 2,
+	Charging = 3,
+	No_Battery = 7,
 }
 Battery_Flags :: bit_set[Battery_Flag; BYTE]
 

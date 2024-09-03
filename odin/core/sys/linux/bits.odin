@@ -244,7 +244,7 @@ Mode_Bits :: enum {
 	ISVTX  = 9,  // 0o0001000
 	ISGID  = 10, // 0o0002000
 	ISUID  = 11, // 0o0004000
-	IFFIFO = 12, // 0o0010000
+	IFIFO = 12, // 0o0010000
 	IFCHR  = 13, // 0o0020000
 	IFDIR  = 14, // 0o0040000
 	IFREG  = 15, // 0o0100000
@@ -984,6 +984,20 @@ Sig_Action_Flag :: enum u32 {
 }
 
 /*
+	Translation of code in Sig_Info for when signo is SIGCHLD
+*/
+Sig_Child_Code :: enum {
+	NONE,
+	EXITED,
+	KILLED,
+	DUMPED,
+	TRAPPED,
+	STOPPED,
+	CONTINUED,
+}
+
+
+/*
 	Type of socket to create
 	- For TCP you want to use SOCK_STREAM
 	- For UDP you want to use SOCK_DGRAM
@@ -1329,13 +1343,15 @@ Socket_Option :: enum {
 	RESERVE_MEM                   = 73,
 	TXREHASH                      = 74,
 	RCVMARK                       = 75,
-	// Hardcoded 64-bit Time. It's time to move on.
-	TIMESTAMP                     = TIMESTAMP_NEW,
-	TIMESTAMPNS                   = TIMESTAMPNS_NEW,
-	TIMESTAMPING                  = TIMESTAMPING_NEW,
-	RCVTIMEO                      = RCVTIMEO_NEW,
-	SNDTIMEO                      = SNDTIMEO_NEW,
+	TIMESTAMP                     = TIMESTAMP_OLD    when _SOCKET_OPTION_OLD else TIMESTAMP_NEW,
+	TIMESTAMPNS                   = TIMESTAMPNS_OLD  when _SOCKET_OPTION_OLD else TIMESTAMPNS_NEW,
+	TIMESTAMPING                  = TIMESTAMPING_OLD when _SOCKET_OPTION_OLD else TIMESTAMPING_NEW,
+	RCVTIMEO                      = RCVTIMEO_OLD     when _SOCKET_OPTION_OLD else RCVTIMEO_NEW,
+	SNDTIMEO                      = SNDTIMEO_OLD     when _SOCKET_OPTION_OLD else SNDTIMEO_NEW,
 }
+
+@(private)
+_SOCKET_OPTION_OLD :: size_of(rawptr) == 8 /* || size_of(time_t) == size_of(__kernel_long_t) */
 
 Socket_UDP_Option :: enum {
 	CORK                   = 1,
@@ -1814,4 +1830,12 @@ EPoll_Ctl_Opcode :: enum i32 {
 	ADD = 1,
 	DEL = 2,
 	MOD = 3,
+}
+
+/*
+	Bits for execveat(2) flags.
+*/
+Execveat_Flags_Bits :: enum {
+	AT_SYMLINK_NOFOLLOW = 8,
+	AT_EMPTY_PATH       = 12,
 }

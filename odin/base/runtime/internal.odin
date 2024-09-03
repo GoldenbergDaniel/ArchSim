@@ -8,10 +8,9 @@ IS_WASM :: ODIN_ARCH == .wasm32 || ODIN_ARCH == .wasm64p32
 
 @(private)
 RUNTIME_LINKAGE :: "strong" when (
-	(ODIN_USE_SEPARATE_MODULES || 
+	ODIN_USE_SEPARATE_MODULES || 
 	ODIN_BUILD_MODE == .Dynamic ||
-	!ODIN_NO_CRT) &&
-	!IS_WASM) else "internal"
+	!ODIN_NO_CRT) else "internal"
 RUNTIME_REQUIRE :: false // !ODIN_TILDE
 
 @(private)
@@ -879,9 +878,6 @@ extendhfsf2 :: proc "c" (value: __float16) -> f32 {
 
 @(link_name="__floattidf", linkage=RUNTIME_LINKAGE, require=RUNTIME_REQUIRE)
 floattidf :: proc "c" (a: i128) -> f64 {
-when IS_WASM {
-	return 0
-} else {
 	DBL_MANT_DIG :: 53
 	if a == 0 {
 		return 0.0
@@ -921,14 +917,10 @@ when IS_WASM {
 	fb[0] = u32(a)                           // mantissa-low
 	return transmute(f64)fb
 }
-}
 
 
 @(link_name="__floattidf_unsigned", linkage=RUNTIME_LINKAGE, require=RUNTIME_REQUIRE)
 floattidf_unsigned :: proc "c" (a: u128) -> f64 {
-when IS_WASM {
-	return 0
-} else {
 	DBL_MANT_DIG :: 53
 	if a == 0 {
 		return 0.0
@@ -965,7 +957,6 @@ when IS_WASM {
 	        u32((u64(a) >> 32) & 0x000FFFFF) // mantissa-high
 	fb[0] = u32(a)                           // mantissa-low
 	return transmute(f64)fb
-}
 }
 
 
@@ -1023,14 +1014,32 @@ modti3 :: proc "c" (a, b: i128) -> i128 {
 
 @(link_name="__divmodti4", linkage=RUNTIME_LINKAGE, require=RUNTIME_REQUIRE)
 divmodti4 :: proc "c" (a, b: i128, rem: ^i128) -> i128 {
-	u := udivmod128(u128(a), u128(b), (^u128)(rem))
-	return i128(u)
+	s_a := a >> (128 - 1) // -1 if negative or 0
+	s_b := b >> (128 - 1)
+	an := (a ~ s_a) - s_a // absolute
+	bn := (b ~ s_b) - s_b
+
+	s_b   ~= s_a // quotient sign
+	u_s_b := u128(s_b)
+	u_s_a := u128(s_a)
+
+	r: u128 = ---
+	u := i128((udivmodti4(u128(an), u128(bn), &r) ~ u_s_b) - u_s_b) // negate if negative
+	rem^ = i128((r ~ u_s_a) - u_s_a)
+	return u
 }
 
 @(link_name="__divti3", linkage=RUNTIME_LINKAGE, require=RUNTIME_REQUIRE)
 divti3 :: proc "c" (a, b: i128) -> i128 {
-	u := udivmodti4(u128(a), u128(b), nil)
-	return i128(u)
+	s_a := a >> (128 - 1) // -1 if negative or 0
+	s_b := b >> (128 - 1)
+	an := (a ~ s_a) - s_a // absolute
+	bn := (b ~ s_b) - s_b
+
+	s_a   ~= s_b // quotient sign
+	u_s_a := u128(s_a)
+
+	return i128((udivmodti4(u128(an), u128(bn), nil) ~ u_s_a) - u_s_a) // negate if negative
 }
 
 

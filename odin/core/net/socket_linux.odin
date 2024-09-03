@@ -10,6 +10,7 @@ package net
 	Copyright 2022 Tetralux        <tetraluxonpc@gmail.com>
 	Copyright 2022 Colin Davidson  <colrdavidson@gmail.com>
 	Copyright 2022 Jeroen van Rijn <nom@duclavier.com>.
+	Copyright 2024 Feoramund       <rune@swevencraft.org>.
 	Made available under Odin's BSD-3 license.
 
 	List of contributors:
@@ -17,6 +18,7 @@ package net
 		Colin Davidson:  Linux platform code, OSX platform code, Odin-native DNS resolver
 		Jeroen van Rijn: Cross platform unification, code style, documentation
 		flysand:         Move dependency from core:os to core:sys/linux
+		Feoramund:       FreeBSD platform code
 */
 
 import "core:c"
@@ -31,8 +33,8 @@ Socket_Option :: enum c.int {
 	Linger                    = c.int(linux.Socket_Option.LINGER),
 	Receive_Buffer_Size       = c.int(linux.Socket_Option.RCVBUF),
 	Send_Buffer_Size          = c.int(linux.Socket_Option.SNDBUF),
-	Receive_Timeout           = c.int(linux.Socket_Option.RCVTIMEO_NEW),
-	Send_Timeout              = c.int(linux.Socket_Option.SNDTIMEO_NEW),
+	Receive_Timeout           = c.int(linux.Socket_Option.RCVTIMEO),
+	Send_Timeout              = c.int(linux.Socket_Option.SNDTIMEO),
 }
 
 // Wrappers and unwrappers for system-native types
@@ -117,7 +119,7 @@ _wrap_os_addr :: proc "contextless" (addr: linux.Sock_Addr_Any)->(Endpoint) {
 _create_socket :: proc(family: Address_Family, protocol: Socket_Protocol) -> (Any_Socket, Network_Error) {
 	family := _unwrap_os_family(family)
 	proto, socktype := _unwrap_os_proto_socktype(protocol)
-	sock, errno := linux.socket(family, socktype, {}, proto)
+	sock, errno := linux.socket(family, socktype, {.CLOEXEC}, proto)
 	if errno != .NONE {
 		return {}, Create_Socket_Error(errno)
 	}
@@ -132,7 +134,7 @@ _dial_tcp_from_endpoint :: proc(endpoint: Endpoint, options := default_tcp_optio
 	}
 	// Create new TCP socket
 	os_sock: linux.Fd
-	os_sock, errno = linux.socket(_unwrap_os_family(family_from_endpoint(endpoint)), .STREAM, {}, .TCP)
+	os_sock, errno = linux.socket(_unwrap_os_family(family_from_endpoint(endpoint)), .STREAM, {.CLOEXEC}, .TCP)
 	if errno != .NONE {
 		// TODO(flysand): should return invalid file descriptor here casted as TCP_Socket
 		return {}, Create_Socket_Error(errno)
@@ -172,7 +174,7 @@ _listen_tcp :: proc(endpoint: Endpoint, backlog := 1000) -> (TCP_Socket, Network
 	ep_address := _unwrap_os_addr(endpoint)
 	// Create TCP socket
 	os_sock: linux.Fd
-	os_sock, errno = linux.socket(ep_family, .STREAM, {}, .TCP)
+	os_sock, errno = linux.socket(ep_family, .STREAM, {.CLOEXEC}, .TCP)
 	if errno != .NONE {
 		// TODO(flysand): should return invalid file descriptor here casted as TCP_Socket
 		return {}, Create_Socket_Error(errno)
