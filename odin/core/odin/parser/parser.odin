@@ -1438,6 +1438,15 @@ parse_stmt :: proc(p: ^Parser) -> ^ast.Stmt {
 				stmt.state_flags += {.No_Bounds_Check}
 			}
 			return stmt
+		case "type_assert", "no_type_assert":
+			stmt := parse_stmt(p)
+			switch name {
+			case "type_assert":
+				stmt.state_flags += {.Type_Assert}
+			case "no_type_assert":
+				stmt.state_flags += {.No_Type_Assert}
+			}
+			return stmt
 		case "partial":
 			stmt := parse_stmt(p)
 			#partial switch s in stmt.derived_stmt {
@@ -1778,6 +1787,7 @@ parse_var_type :: proc(p: ^Parser, flags: ast.Field_Flags) -> ^ast.Expr {
 			type = ast.new(ast.Bad_Expr, tok.pos, end_pos(tok))
 		}
 		e := ast.new(ast.Ellipsis, type.pos, type)
+		e.tok = tok.kind
 		e.expr = type
 		return e
 	}
@@ -2179,22 +2189,25 @@ parse_inlining_operand :: proc(p: ^Parser, lhs: bool, tok: tokenizer.Token) -> ^
 		}
 	}
 
-	#partial switch e in ast.strip_or_return_expr(expr).derived_expr {
-	case ^ast.Proc_Lit:
-		if e.inlining != .None && e.inlining != pi {
-			error(p, expr.pos, "both 'inline' and 'no_inline' cannot be applied to a procedure literal")
+	if expr != nil {
+		#partial switch e in ast.strip_or_return_expr(expr).derived_expr {
+		case ^ast.Proc_Lit:
+			if e.inlining != .None && e.inlining != pi {
+				error(p, expr.pos, "both 'inline' and 'no_inline' cannot be applied to a procedure literal")
+			}
+			e.inlining = pi
+			return expr
+		case ^ast.Call_Expr:
+			if e.inlining != .None && e.inlining != pi {
+				error(p, expr.pos, "both 'inline' and 'no_inline' cannot be applied to a procedure call")
+			}
+			e.inlining = pi
+			return expr
 		}
-		e.inlining = pi
-	case ^ast.Call_Expr:
-		if e.inlining != .None && e.inlining != pi {
-			error(p, expr.pos, "both 'inline' and 'no_inline' cannot be applied to a procedure call")
-		}
-		e.inlining = pi
-	case:
-		error(p, tok.pos, "'%s' must be followed by a procedure literal or call", tok.text)
-		return ast.new(ast.Bad_Expr, tok.pos, expr)
 	}
-	return expr
+
+	error(p, tok.pos, "'%s' must be followed by a procedure literal or call", tok.text)
+	return ast.new(ast.Bad_Expr, tok.pos, expr)
 }
 
 parse_operand :: proc(p: ^Parser, lhs: bool) -> ^ast.Expr {
@@ -2258,17 +2271,17 @@ parse_operand :: proc(p: ^Parser, lhs: bool) -> ^ast.Expr {
 			hp.type = type
 			return hp
 
-		case "file", "line", "procedure", "caller_location":
+		case "file", "directory", "line", "procedure", "caller_location":
 			bd := ast.new(ast.Basic_Directive, tok.pos, end_pos(name))
 			bd.tok  = tok
 			bd.name = name.text
 			return bd
-		case "location", "load", "assert", "defined", "config":
+
+		case "location", "exists", "load", "load_directory", "load_hash", "hash", "assert", "panic", "defined", "config":
 			bd := ast.new(ast.Basic_Directive, tok.pos, end_pos(name))
 			bd.tok  = tok
 			bd.name = name.text
 			return parse_call_expr(p, bd)
-
 
 		case "soa":
 			bd := ast.new(ast.Basic_Directive, tok.pos, end_pos(name))
@@ -2828,11 +2841,17 @@ parse_operand :: proc(p: ^Parser, lhs: bool) -> ^ast.Expr {
 			expect_token(p, .Or)
 			bit_size := parse_expr(p, true)
 
+			tag: tokenizer.Token
+			if p.curr_tok.kind == .String {
+				tag = expect_token(p, .String)
+			}
+
 			field := ast.new(ast.Bit_Field_Field, name.pos, bit_size)
 
 			field.name     = name
 			field.type     = type
 			field.bit_size = bit_size
+			field.tag      = tag
 
 			append(&fields, field)
 
@@ -2841,7 +2860,7 @@ parse_operand :: proc(p: ^Parser, lhs: bool) -> ^ast.Expr {
 
 		close := expect_closing_brace_of_field_list(p)
 
-		bf := ast.new(ast.Bit_Field_Type, tok.pos, close.pos)
+		bf := ast.new(ast.Bit_Field_Type, tok.pos, end_pos(close))
 
 		bf.tok_pos      = tok.pos
 		bf.backing_type = backing_type

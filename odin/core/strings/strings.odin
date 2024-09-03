@@ -1,6 +1,8 @@
 // Procedures to manipulate UTF-8 encoded strings
 package strings
 
+import "base:intrinsics"
+import "core:bytes"
 import "core:io"
 import "core:mem"
 import "core:unicode"
@@ -344,6 +346,17 @@ Output:
 contains_any :: proc(s, chars: string) -> (res: bool) {
 	return index_any(s, chars) >= 0
 }
+
+
+contains_space :: proc(s: string) -> (res: bool) {
+	for c in s {
+		if is_space(c) {
+			return true
+		}
+	}
+	return false
+}
+
 /*
 Returns the UTF-8 rune count of the string `s`
 
@@ -531,6 +544,9 @@ Output:
 has_prefix :: proc(s, prefix: string) -> (result: bool) {
 	return len(s) >= len(prefix) && s[0:len(prefix)] == prefix
 }
+
+starts_with :: has_prefix
+
 /*
 Determines if a string `s` ends with a given `suffix`
 
@@ -562,6 +578,9 @@ Output:
 has_suffix :: proc(s, suffix: string) -> (result: bool) {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
+
+ends_with :: has_suffix
+
 /*
 Joins a slice of strings `a` with a `sep` string
 
@@ -1001,11 +1020,6 @@ Returns:
 */
 @private
 _split_iterator :: proc(s: ^string, sep: string, sep_save: int) -> (res: string, ok: bool) {
-	// stop once the string is empty or nil
-	if s == nil || len(s^) == 0 {
-		return
-	}
-
 	if sep == "" {
 		res = s[:]
 		ok = true
@@ -1423,12 +1437,7 @@ Output:
 
 */
 index_byte :: proc(s: string, c: byte) -> (res: int) {
-	for i := 0; i < len(s); i += 1 {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
+	return #force_inline bytes.index_byte(transmute([]u8)s, c)
 }
 /*
 Returns the byte offset of the last byte `c` in the string `s`, -1 when not found.
@@ -1463,12 +1472,7 @@ Output:
 
 */
 last_index_byte :: proc(s: string, c: byte) -> (res: int) {
-	for i := len(s)-1; i >= 0; i -= 1 {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
+	return #force_inline bytes.last_index_byte(transmute([]u8)s, c)
 }
 /*
 Returns the byte offset of the first rune `r` in the string `s` it finds, -1 when not found.
@@ -2070,7 +2074,10 @@ replace :: proc(s, old, new: string, n: int, allocator := context.allocator, loc
 	}
 
 
-	t := make([]byte, len(s) + byte_count*(len(new) - len(old)), allocator, loc)
+	t, err := make([]byte, len(s) + byte_count*(len(new) - len(old)), allocator, loc)
+	if err != nil {
+		return
+	}
 	was_allocation = true
 
 	w := 0
@@ -2414,9 +2421,6 @@ trim_right_proc_with_state :: proc(s: string, p: proc(rawptr, rune) -> bool, sta
 }
 // Procedure for `trim_*_proc` variants, which has a string rawptr cast + rune comparison
 is_in_cutset :: proc(state: rawptr, r: rune) -> (res: bool) {
-	if state == nil {
-		return false
-	}
 	cutset := (^string)(state)^
 	for c in cutset {
 		if r == c {
@@ -2714,7 +2718,7 @@ Output:
 
 */
 split_multi_iterate :: proc(it: ^string, substrs: []string) -> (res: string, ok: bool) #no_bounds_check {
-	if it == nil || len(it) == 0 || len(substrs) <= 0 {
+	if len(it) == 0 || len(substrs) <= 0 {
 		return
 	}
 

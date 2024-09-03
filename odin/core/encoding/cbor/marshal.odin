@@ -54,7 +54,7 @@ marshal_into_bytes :: proc(v: any, flags := ENCODE_SMALL, allocator := context.a
 
 	defer if err != nil { strings.builder_destroy(&b) }
 
-	if err = marshal_into_builder(&b, v, flags, temp_allocator, loc=loc); err != nil {
+	if err = marshal_into_builder(&b, v, flags, temp_allocator); err != nil {
 		return
 	}
 
@@ -63,20 +63,20 @@ marshal_into_bytes :: proc(v: any, flags := ENCODE_SMALL, allocator := context.a
 
 // Marshals the given value into a CBOR byte stream written to the given builder.
 // See docs on the `marshal_into` proc group for more info.
-marshal_into_builder :: proc(b: ^strings.Builder, v: any, flags := ENCODE_SMALL, temp_allocator := context.temp_allocator, loc := #caller_location) -> Marshal_Error {
-	return marshal_into_writer(strings.to_writer(b), v, flags, temp_allocator, loc=loc)
+marshal_into_builder :: proc(b: ^strings.Builder, v: any, flags := ENCODE_SMALL, temp_allocator := context.temp_allocator) -> Marshal_Error {
+	return marshal_into_writer(strings.to_writer(b), v, flags, temp_allocator)
 }
 
 // Marshals the given value into a CBOR byte stream written to the given writer.
 // See docs on the `marshal_into` proc group for more info.
-marshal_into_writer :: proc(w: io.Writer, v: any, flags := ENCODE_SMALL, temp_allocator := context.temp_allocator, loc := #caller_location) -> Marshal_Error {
+marshal_into_writer :: proc(w: io.Writer, v: any, flags := ENCODE_SMALL, temp_allocator := context.temp_allocator) -> Marshal_Error {
 	encoder := Encoder{flags, w, temp_allocator}
-	return marshal_into_encoder(encoder, v, loc=loc)
+	return marshal_into_encoder(encoder, v)
 }
 
 // Marshals the given value into a CBOR byte stream written to the given encoder.
 // See docs on the `marshal_into` proc group for more info.
-marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (err: Marshal_Error) {
+marshal_into_encoder :: proc(e: Encoder, v: any) -> (err: Marshal_Error) {
 	e := e
 
 	if e.temp_allocator.procedure == nil {
@@ -97,11 +97,14 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 		return impl->marshal(e, v)
 	}
 
-	ti := runtime.type_info_base(type_info_of(v.id))
-	a := any{v.data, ti.id}
+	ti := runtime.type_info_core(type_info_of(v.id))
+	return _marshal_into_encoder(e, v, ti)
+}
 
+_marshal_into_encoder :: proc(e: Encoder, v: any, ti: ^runtime.Type_Info) -> (err: Marshal_Error) {
+	a := any{v.data, ti.id}
 	#partial switch info in ti.variant {
-	case runtime.Type_Info_Named:
+	case runtime.Type_Info_Named, runtime.Type_Info_Enum, runtime.Type_Info_Bit_Field:
 		unreachable()
 
 	case runtime.Type_Info_Pointer:
@@ -223,18 +226,38 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 		}
 
 		err_conv(_encode_u64(e, u64(info.count), .Array)) or_return
+
+		if impl, ok := _tag_implementations_type[info.elem.id]; ok {
+			for i in 0..<info.count {
+				data := uintptr(v.data) + uintptr(i*info.elem_size)
+				impl->marshal(e, any{rawptr(data), info.elem.id}) or_return
+			}
+			return
+		}
+
+		elem_ti := runtime.type_info_core(type_info_of(info.elem.id))
 		for i in 0..<info.count {
 			data := uintptr(v.data) + uintptr(i*info.elem_size)
-			marshal_into(e, any{rawptr(data), info.elem.id}) or_return
+			_marshal_into_encoder(e, any{rawptr(data), info.elem.id}, elem_ti) or_return
 		}
 		return
 
 	case runtime.Type_Info_Enumerated_Array:
 		// index := runtime.type_info_base(info.index).variant.(runtime.Type_Info_Enum)
 		err_conv(_encode_u64(e, u64(info.count), .Array)) or_return
+
+		if impl, ok := _tag_implementations_type[info.elem.id]; ok {
+			for i in 0..<info.count {
+				data := uintptr(v.data) + uintptr(i*info.elem_size)
+				impl->marshal(e, any{rawptr(data), info.elem.id}) or_return
+			}
+			return
+		}
+
+		elem_ti := runtime.type_info_core(type_info_of(info.elem.id))
 		for i in 0..<info.count {
 			data := uintptr(v.data) + uintptr(i*info.elem_size)
-			marshal_into(e, any{rawptr(data), info.elem.id}) or_return
+			_marshal_into_encoder(e, any{rawptr(data), info.elem.id}, elem_ti) or_return
 		}
 		return
 		
@@ -246,9 +269,19 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 
 		array := (^mem.Raw_Dynamic_Array)(v.data)
 		err_conv(_encode_u64(e, u64(array.len), .Array)) or_return
+
+		if impl, ok := _tag_implementations_type[info.elem.id]; ok {
+			for i in 0..<array.len {
+				data := uintptr(array.data) + uintptr(i*info.elem_size)
+				impl->marshal(e, any{rawptr(data), info.elem.id}) or_return
+			}
+			return
+		}
+
+		elem_ti := runtime.type_info_core(type_info_of(info.elem.id))
 		for i in 0..<array.len {
 			data := uintptr(array.data) + uintptr(i*info.elem_size)
-			marshal_into(e, any{rawptr(data), info.elem.id}) or_return
+			_marshal_into_encoder(e, any{rawptr(data), info.elem.id}, elem_ti) or_return
 		}
 		return
 
@@ -260,9 +293,19 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 
 		array := (^mem.Raw_Slice)(v.data)
 		err_conv(_encode_u64(e, u64(array.len), .Array)) or_return
+
+		if impl, ok := _tag_implementations_type[info.elem.id]; ok {
+			for i in 0..<array.len {
+				data := uintptr(array.data) + uintptr(i*info.elem_size)
+				impl->marshal(e, any{rawptr(data), info.elem.id}) or_return
+			}
+			return
+		}
+
+		elem_ti := runtime.type_info_core(type_info_of(info.elem.id))
 		for i in 0..<array.len {
 			data := uintptr(array.data) + uintptr(i*info.elem_size)
-			marshal_into(e, any{rawptr(data), info.elem.id}) or_return
+			_marshal_into_encoder(e, any{rawptr(data), info.elem.id}, elem_ti) or_return
 		}
 		return
 
@@ -308,7 +351,8 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 				builder := strings.builder_from_slice(res[:])
 				e.writer = strings.to_stream(&builder)
 
-				assert(_encode_u64(e, u64(len(str)), .Text) == nil)
+				err := _encode_u64(e, u64(len(str)), .Text)
+				assert(err == nil)
 				res[9] = u8(len(builder.buf))
 				assert(res[9] < 10)
 				return
@@ -437,9 +481,7 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 			}
 		}
 
-		marshal_entry :: #force_inline proc(e: Encoder, info: runtime.Type_Info_Struct, v: any, name: string, i: int) -> Marshal_Error {
-			err_conv(_encode_text(e, name)) or_return
-
+		marshal_entry :: #force_inline proc(e: Encoder, info: runtime.Type_Info_Struct, v: any, i: int) -> Marshal_Error {
 			id := info.types[i].id
 			data := rawptr(uintptr(v.data) + info.offsets[i])
 			field_any := any{data, id}
@@ -463,7 +505,7 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 		}
 		
 		n: u64; {
-			for _, i in info.names {
+			for _, i in info.names[:info.field_count] {
 				if field_name(info, i) != "-" {
 					n += 1
 				}
@@ -473,37 +515,41 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 
 		if .Deterministic_Map_Sorting in e.flags {
 			Name :: struct {
-				name:  string,
+				name:  []byte,
 				field: int,
 			}
 			entries := make([dynamic]Name, 0, n, e.temp_allocator) or_return
 			defer delete(entries)
 
-			for _, i in info.names {
+			for _, i in info.names[:info.field_count] {
 				fname := field_name(info, i)
 				if fname == "-" {
 					continue
 				}
 
-				append(&entries, Name{fname, i}) or_return
+				key_builder := strings.builder_make(e.temp_allocator) or_return
+				err_conv(_encode_text(Encoder{e.flags, strings.to_stream(&key_builder), e.temp_allocator}, fname)) or_return
+				append(&entries, Name{key_builder.buf[:], i}) or_return
 			}
 
 			// Sort lexicographic on the bytes of the key.
 			slice.sort_by_cmp(entries[:], proc(a, b: Name) -> slice.Ordering {
-				return slice.Ordering(bytes.compare(transmute([]byte)a.name, transmute([]byte)b.name))
+				return slice.Ordering(bytes.compare(a.name, b.name))
 			})
 
 			for entry in entries {
-				marshal_entry(e, info, v, entry.name, entry.field) or_return
+				io.write_full(e.writer, entry.name) or_return
+				marshal_entry(e, info, v, entry.field) or_return
 			}
 		} else {
-			for _, i in info.names {
+			for _, i in info.names[:info.field_count] {
 				fname := field_name(info, i)
 				if fname == "-" {
 					continue
 				}
 
-				marshal_entry(e, info, v, fname, i) or_return
+				err_conv(_encode_text(e, fname)) or_return
+				marshal_entry(e, info, v, i) or_return
 			}
 		}
 		return
@@ -541,9 +587,6 @@ marshal_into_encoder :: proc(e: Encoder, v: any, loc :=  #caller_location) -> (e
 		}
 
 		return marshal_into(e, any{v.data, vti.id})
-
-	case runtime.Type_Info_Enum:
-		return marshal_into(e, any{v.data, info.base.id})
 
 	case runtime.Type_Info_Bit_Set:
 		// Store bit_set as big endian just like the protocol.

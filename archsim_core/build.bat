@@ -17,4 +17,4 @@ if "%KIND%"=="dev" set MODE=run
 
 if not exist out mkdir out
 set ODIN_ROOT=..\odin
-..\odin\odin.exe %MODE% %SRC% -out:out/%OUT% %FLAGS% -collection:ext=ext/
+..\odin\odin.exe %MODE% %SRC% -out:out/%OUT% %FLAGS%

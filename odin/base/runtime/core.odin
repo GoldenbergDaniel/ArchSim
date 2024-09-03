@@ -66,7 +66,7 @@ Type_Info_Named :: struct {
 	name: string,
 	base: ^Type_Info,
 	pkg:  string,
-	loc:  Source_Code_Location,
+	loc:  ^Source_Code_Location,
 }
 Type_Info_Integer    :: struct {signed: bool, endianness: Platform_Endianness}
 Type_Info_Rune       :: struct {}
@@ -112,23 +112,32 @@ Type_Info_Parameters :: struct { // Only used for procedures parameters and resu
 }
 Type_Info_Tuple :: Type_Info_Parameters // Will be removed eventually
 
-Type_Info_Struct :: struct {
-	types:        []^Type_Info,
-	names:        []string,
-	offsets:      []uintptr,
-	usings:       []bool,
-	tags:         []string,
-	is_packed:    bool,
-	is_raw_union: bool,
-	is_no_copy:   bool,
-	custom_align: bool,
+Type_Info_Struct_Flags :: distinct bit_set[Type_Info_Struct_Flag; u8]
+Type_Info_Struct_Flag :: enum u8 {
+	packed    = 0,
+	raw_union = 1,
+	no_copy   = 2,
+	align     = 3,
+}
 
-	equal: Equal_Proc, // set only when the struct has .Comparable set but does not have .Simple_Compare set
+Type_Info_Struct :: struct {
+	// Slice these with `field_count`
+	types:   [^]^Type_Info `fmt:"v,field_count"`,
+	names:   [^]string     `fmt:"v,field_count"`,
+	offsets: [^]uintptr    `fmt:"v,field_count"`,
+	usings:  [^]bool       `fmt:"v,field_count"`,
+	tags:    [^]string     `fmt:"v,field_count"`,
+
+	field_count: i32,
+
+	flags: Type_Info_Struct_Flags,
 
 	// These are only set iff this structure is an SOA structure
 	soa_kind:      Type_Info_Struct_Soa_Kind,
+	soa_len:       i32,
 	soa_base_type: ^Type_Info,
-	soa_len:       int,
+
+	equal: Equal_Proc, // set only when the struct has .Comparable set but does not have .Simple_Compare set
 }
 Type_Info_Union :: struct {
 	variants:     []^Type_Info,
@@ -142,9 +151,9 @@ Type_Info_Union :: struct {
 	shared_nil:   bool,
 }
 Type_Info_Enum :: struct {
-	base:      ^Type_Info,
-	names:     []string,
-	values:    []Type_Info_Enum_Value,
+	base:   ^Type_Info,
+	names:  []string,
+	values: []Type_Info_Enum_Value,
 }
 Type_Info_Map :: struct {
 	key:      ^Type_Info,
@@ -187,11 +196,12 @@ Type_Info_Soa_Pointer :: struct {
 }
 Type_Info_Bit_Field :: struct {
 	backing_type: ^Type_Info,
-	names:        []string,
-	types:        []^Type_Info,
-	bit_sizes:    []uintptr,
-	bit_offsets:  []uintptr,
-	tags:         []string,
+	names:        [^]string     `fmt:"v,field_count"`,
+	types:        [^]^Type_Info `fmt:"v,field_count"`,
+	bit_sizes:    [^]uintptr    `fmt:"v,field_count"`,
+	bit_offsets:  [^]uintptr    `fmt:"v,field_count"`,
+	tags:         [^]string     `fmt:"v,field_count"`,
+	field_count:  int,
 }
 
 Type_Info_Flag :: enum u8 {
@@ -299,6 +309,8 @@ when ODIN_OS == .Windows {
 		Thread_Detach  = 3,
 	}
 	dll_forward_reason: DLL_Forward_Reason
+
+	dll_instance: rawptr
 }
 
 // IMPORTANT NOTE(bill): Must be in this order (as the compiler relies upon it)
@@ -513,11 +525,12 @@ Raw_Quaternion256_Vector_Scalar :: struct {vector: [3]f64, scalar: f64}
 		Linux,
 		Essence,
 		FreeBSD,
-		Haiku,
 		OpenBSD,
 		NetBSD,
+		Haiku,
 		WASI,
 		JS,
+		Orca,
 		Freestanding,
 	}
 */
@@ -533,9 +546,22 @@ Odin_OS_Type :: type_of(ODIN_OS)
 		arm64,
 		wasm32,
 		wasm64p32,
+		riscv64,
 	}
 */
 Odin_Arch_Type :: type_of(ODIN_ARCH)
+
+Odin_Arch_Types :: bit_set[Odin_Arch_Type]
+
+ALL_ODIN_ARCH_TYPES :: Odin_Arch_Types{
+	.amd64,
+	.i386,
+	.arm32,
+	.arm64,
+	.wasm32,
+	.wasm64p32,
+	.riscv64,
+}
 
 /*
 	// Defined internally by the compiler
@@ -560,6 +586,22 @@ Odin_Build_Mode_Type :: type_of(ODIN_BUILD_MODE)
 */
 Odin_Endian_Type :: type_of(ODIN_ENDIAN)
 
+Odin_OS_Types :: bit_set[Odin_OS_Type]
+
+ALL_ODIN_OS_TYPES :: Odin_OS_Types{
+	.Windows,
+	.Darwin,
+	.Linux,
+	.Essence,
+	.FreeBSD,
+	.OpenBSD,
+	.NetBSD,
+	.Haiku,
+	.WASI,
+	.JS,
+	.Orca,
+	.Freestanding,
+}
 
 /*
 	// Defined internally by the compiler
@@ -577,7 +619,7 @@ Odin_Platform_Subtarget_Type :: type_of(ODIN_PLATFORM_SUBTARGET)
 		Memory  = 1,
 		Thread  = 2,
 	}
-	Odin_Sanitizer_Flags :: distinct bitset[Odin_Sanitizer_Flag; u32]
+	Odin_Sanitizer_Flags :: distinct bit_set[Odin_Sanitizer_Flag; u32]
 
 	ODIN_SANITIZER_FLAGS // is a constant
 */
@@ -737,6 +779,10 @@ __init_context :: proc "contextless" (c: ^Context) {
 }
 
 default_assertion_failure_proc :: proc(prefix, message: string, loc: Source_Code_Location) -> ! {
+	default_assertion_contextless_failure_proc(prefix, message, loc)
+}
+
+default_assertion_contextless_failure_proc :: proc "contextless" (prefix, message: string, loc: Source_Code_Location) -> ! {
 	when ODIN_OS == .Freestanding {
 		// Do nothing
 	} else {

@@ -1,14 +1,24 @@
 //+private
 package testing
 
+/*
+	(c) Copyright 2024 Feoramund <rune@swevencraft.org>.
+	Made available under Odin's BSD-3 license.
+
+	List of contributors:
+		Ginger Bill: Initial implementation.
+		Feoramund:   Total rewrite.
+*/
+
 import "base:intrinsics"
 import "base:runtime"
 import "core:bytes"
 import "core:encoding/ansi"
 @require import "core:encoding/base64"
+@require import "core:encoding/json"
 import "core:fmt"
 import "core:io"
-@require import pkg_log "core:log"
+@require import "core:log"
 import "core:math/rand"
 import "core:mem"
 import "core:os"
@@ -24,6 +34,8 @@ TEST_THREADS          : int    : #config(ODIN_TEST_THREADS, 0)
 TRACKING_MEMORY       : bool   : #config(ODIN_TEST_TRACK_MEMORY, true)
 // Always report how much memory is used, even when there are no leaks or bad frees.
 ALWAYS_REPORT_MEMORY  : bool   : #config(ODIN_TEST_ALWAYS_REPORT_MEMORY, false)
+// Treat memory leaks and bad frees as errors.
+FAIL_ON_BAD_MEMORY    : bool   : #config(ODIN_TEST_FAIL_ON_BAD_MEMORY, false)
 // Specify how much memory each thread allocator starts with.
 PER_THREAD_MEMORY     : int    : #config(ODIN_TEST_THREAD_MEMORY, mem.ROLLBACK_STACK_DEFAULT_BLOCK_SIZE)
 // Select a specific set of tests to run by name.
@@ -41,24 +53,33 @@ PROGRESS_WIDTH        : int    : #config(ODIN_TEST_PROGRESS_WIDTH, 24)
 // If it is unspecified, it will be set to the system cycle counter at startup.
 SHARED_RANDOM_SEED    : u64    : #config(ODIN_TEST_RANDOM_SEED, 0)
 // Set the lowest log level for this test run.
-LOG_LEVEL             : string : #config(ODIN_TEST_LOG_LEVEL, "info")
+LOG_LEVEL_DEFAULT     : string : "debug" when ODIN_DEBUG else "info"
+LOG_LEVEL             : string : #config(ODIN_TEST_LOG_LEVEL, LOG_LEVEL_DEFAULT)
 // Show only the most necessary logging information.
 USING_SHORT_LOGS      : bool   : #config(ODIN_TEST_SHORT_LOGS, false)
-
+// Output a report of the tests to the given path.
+JSON_REPORT           : string : #config(ODIN_TEST_JSON_REPORT, "")
 
 get_log_level :: #force_inline proc() -> runtime.Logger_Level {
-	when ODIN_DEBUG {
-		// Always use .Debug in `-debug` mode.
-		return .Debug
-	} else {
-		when LOG_LEVEL == "debug"   { return .Debug   } else
-		when LOG_LEVEL == "info"    { return .Info    } else
-		when LOG_LEVEL == "warning" { return .Warning } else
-		when LOG_LEVEL == "error"   { return .Error   } else
-		when LOG_LEVEL == "fatal"   { return .Fatal   } else {
-			#panic("Unknown `ODIN_TEST_LOG_LEVEL`: \"" + LOG_LEVEL + "\", possible levels are: \"debug\", \"info\", \"warning\", \"error\", or \"fatal\".")
-		}
+	when LOG_LEVEL == "debug"   { return .Debug   } else
+	when LOG_LEVEL == "info"    { return .Info    } else
+	when LOG_LEVEL == "warning" { return .Warning } else
+	when LOG_LEVEL == "error"   { return .Error   } else
+	when LOG_LEVEL == "fatal"   { return .Fatal   } else {
+		#panic("Unknown `ODIN_TEST_LOG_LEVEL`: \"" + LOG_LEVEL + "\", possible levels are: \"debug\", \"info\", \"warning\", \"error\", or \"fatal\".")
 	}
+}
+
+JSON :: struct {
+	total:    int,
+	success:  int,
+	duration: time.Duration,
+	packages: map[string][dynamic]JSON_Test,
+}
+
+JSON_Test :: struct {
+	success: bool,
+	name:    string,
 }
 
 end_t :: proc(t: ^T) {
@@ -72,10 +93,19 @@ end_t :: proc(t: ^T) {
 	t.cleanups = {}
 }
 
-Task_Data :: struct {
-	it: Internal_Test,
-	t: T,
-	allocator_index: int,
+when TRACKING_MEMORY && FAIL_ON_BAD_MEMORY {
+	Task_Data :: struct {
+		it: Internal_Test,
+		t: T,
+		allocator_index: int,
+		tracking_allocator: ^mem.Tracking_Allocator,
+	}
+} else {
+	Task_Data :: struct {
+		it: Internal_Test,
+		t: T,
+		allocator_index: int,
+	}
 }
 
 Task_Timeout :: struct {
@@ -118,6 +148,31 @@ run_test_task :: proc(task: thread.Task) {
 	data.it.p(&data.t)
 
 	end_t(&data.t)
+
+	when TRACKING_MEMORY && FAIL_ON_BAD_MEMORY {
+		// NOTE(Feoramund): The simplest way to handle treating memory failures
+		// as errors is to allow the test task runner to access the tracking
+		// allocator itself.
+		//
+		// This way, it's still able to send up a log message, which will be
+		// used in the end summary, and it can set the test state to `Failed`
+		// under the usual conditions.
+		//
+		// No outside intervention needed.
+		memory_leaks := len(data.tracking_allocator.allocation_map)
+		bad_frees    := len(data.tracking_allocator.bad_free_array)
+
+		memory_is_in_bad_state := memory_leaks + bad_frees > 0
+
+		data.t.error_count += memory_leaks + bad_frees
+
+		if memory_is_in_bad_state {
+			log.errorf("Memory failure in `%s.%s` with %i leak%s and %i bad free%s.",
+				data.it.pkg, data.it.name,
+				memory_leaks, "" if memory_leaks == 1 else "s",
+				bad_frees, "" if bad_frees == 1 else "s")
+		}
+	}
 
 	new_state : Test_State = .Failed if failed(&data.t) else .Successful
 
@@ -404,6 +459,9 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 
 			#no_bounds_check when TRACKING_MEMORY {
 				task_allocator := mem.tracking_allocator(&task_memory_trackers[task_index])
+				when FAIL_ON_BAD_MEMORY {
+					data.tracking_allocator = &task_memory_trackers[task_index]
+				}
 			} else {
 				task_allocator := mem.rollback_stack_allocator(&task_allocators[task_index])
 			}
@@ -428,30 +486,35 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 	}
 
 	when TEST_THREADS == 0 {
-		pkg_log.infof("Starting test runner with %i thread%s. Set with -define:ODIN_TEST_THREADS=n.",
+		log.infof("Starting test runner with %i thread%s. Set with -define:ODIN_TEST_THREADS=n.",
 			thread_count,
 			"" if thread_count == 1 else "s")
 	} else {
-		pkg_log.infof("Starting test runner with %i thread%s.",
+		log.infof("Starting test runner with %i thread%s.",
 			thread_count,
 			"" if thread_count == 1 else "s")
 	}
 
 	when SHARED_RANDOM_SEED == 0 {
-		pkg_log.infof("The random seed sent to every test is: %v. Set with -define:ODIN_TEST_RANDOM_SEED=n.", shared_random_seed)
+		log.infof("The random seed sent to every test is: %v. Set with -define:ODIN_TEST_RANDOM_SEED=n.", shared_random_seed)
 	} else {
-		pkg_log.infof("The random seed sent to every test is: %v.", shared_random_seed)
+		log.infof("The random seed sent to every test is: %v.", shared_random_seed)
 	}
 
 	when TRACKING_MEMORY {
 		when ALWAYS_REPORT_MEMORY {
-			pkg_log.info("Memory tracking is enabled. Tests will log their memory usage when complete.")
+			log.info("Memory tracking is enabled. Tests will log their memory usage when complete.")
 		} else {
-			pkg_log.info("Memory tracking is enabled. Tests will log their memory usage if there's an issue.")
+			log.info("Memory tracking is enabled. Tests will log their memory usage if there's an issue.")
 		}
-		pkg_log.info("< Final Mem/ Total Mem> <  Peak Mem> (#Free/Alloc) :: [package.test_name]")
-	} else when ALWAYS_REPORT_MEMORY {
-		pkg_log.warn("ODIN_TEST_ALWAYS_REPORT_MEMORY is true, but ODIN_TRACK_MEMORY is false.")
+		log.info("< Final Mem/ Total Mem> <  Peak Mem> (#Free/Alloc) :: [package.test_name]")
+	} else {
+		when ALWAYS_REPORT_MEMORY {
+			log.warn("ODIN_TEST_ALWAYS_REPORT_MEMORY is true, but ODIN_TEST_TRACK_MEMORY is false.")
+		}
+		when FAIL_ON_BAD_MEMORY {
+			log.warn("ODIN_TEST_FAIL_ON_BAD_MEMORY is true, but ODIN_TEST_TRACK_MEMORY is false.")
+		}
 	}
 
 	start_time := time.now()
@@ -493,7 +556,11 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 				if should_report {
 					write_memory_report(batch_writer, tracker, data.it.pkg, data.it.name)
 
-					pkg_log.log(.Warning if memory_is_in_bad_state else .Info, bytes.buffer_to_string(&batch_buffer))
+					when FAIL_ON_BAD_MEMORY {
+						log.log(.Error if memory_is_in_bad_state else .Info, bytes.buffer_to_string(&batch_buffer))
+					} else {
+						log.log(.Warning if memory_is_in_bad_state else .Info, bytes.buffer_to_string(&batch_buffer))
+					}
 					bytes.buffer_reset(&batch_buffer)
 				}
 
@@ -540,7 +607,7 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 					}
 
 					when ODIN_DEBUG {
-						pkg_log.debugf("Test #%i %s.%s changed state to %v.", task_channel.test_index, it.pkg, it.name, event.new_state)
+						log.debugf("Test #%i %s.%s changed state to %v.", task_channel.test_index, it.pkg, it.name, event.new_state)
 					}
 
 					pkg.last_change_state = event.new_state
@@ -654,8 +721,8 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 			#no_bounds_check pkg := report.packages_by_name[it.pkg]
 			pkg.frame_ready = false
 
-			fmt.assertf(thread.pool_stop_task(&pool, test_index),
-				"A signal (%v) was raised to stop test #%i %s.%s, but it was unable to be found.",
+			found := thread.pool_stop_task(&pool, test_index)
+			fmt.assertf(found, "A signal (%v) was raised to stop test #%i %s.%s, but it was unable to be found.",
 				reason, test_index, it.pkg, it.name)
 
 			// The order this is handled in is a little particular.
@@ -677,7 +744,7 @@ runner :: proc(internal_tests: []Internal_Test) -> bool {
 					// the signal won't be very useful, whereas asserts and panics
 					// will provide a user-written error message.
 					failed_test_reason_map[test_index] = fmt.aprintf("Signal caught: %v", reason, allocator = shared_log_allocator)
-					pkg_log.fatalf("Caught signal to stop test #%i %s.%s for: %v.", test_index, it.pkg, it.name, reason)
+					log.fatalf("Caught signal to stop test #%i %s.%s for: %v.", test_index, it.pkg, it.name, reason)
 				}
 
 				when FANCY_OUTPUT {
@@ -846,6 +913,36 @@ To partly mitigate this, redirect STDERR to a file or use the -define:ODIN_TEST_
 	}
 
 	fmt.wprintln(stderr, bytes.buffer_to_string(&batch_buffer))
+
+	when JSON_REPORT != "" {
+		json_report: JSON
+
+		mode: int
+		when ODIN_OS != .Windows {
+			mode = os.S_IRUSR|os.S_IWUSR|os.S_IRGRP|os.S_IROTH
+		}
+		json_fd, err := os.open(JSON_REPORT, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+		fmt.assertf(err == nil, "unable to open file %q for writing of JSON report, error: %v", JSON_REPORT, err)
+		defer os.close(json_fd)
+
+		for test, i in report.all_tests {
+			#no_bounds_check state := report.all_test_states[i]
+
+			if test.pkg not_in json_report.packages {
+				json_report.packages[test.pkg] = {}
+			}
+
+			tests := &json_report.packages[test.pkg]
+			append(tests, JSON_Test{name = test.name, success = state == .Successful})
+		}
+
+		json_report.total    = len(internal_tests)
+		json_report.success  = total_success_count
+		json_report.duration = finished_in
+
+		err := json.marshal_to_writer(os.stream_from_handle(json_fd), json_report, &{ pretty = true })
+		fmt.assertf(err == nil, "Error writing JSON report: %v", err)
+	}
 
 	return total_success_count == total_test_count
 }

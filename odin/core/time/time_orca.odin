@@ -2,23 +2,28 @@
 //+build orca
 package time
 
-_IS_SUPPORTED :: false
+import "base:intrinsics"
+
+import "core:sys/orca"
+
+_IS_SUPPORTED :: true
 
 _now :: proc "contextless" () -> Time {
-	return {}
+	CLK_JAN_1970 :: 2208988800
+	secs := orca.clock_time(.DATE)
+	return Time{i64((secs - CLK_JAN_1970) * 1e9)}
 }
 
 _sleep :: proc "contextless" (d: Duration) {
+	// NOTE: no way to sleep afaict.
+	if d > 0 {
+		orca.log_warning("core:time 'sleep' is unimplemented for orca")
+	}
 }
 
 _tick_now :: proc "contextless" () -> Tick {
-	// mul_div_u64 :: proc "contextless" (val, num, den: i64) -> i64 {
-	// 	q := val / den
-	// 	r := val % den
-	// 	return q * num + r * num / den
-	// }
-	return {}
+	secs := orca.clock_time(.MONOTONIC)
+	return Tick{i64(secs * 1e9)}
 }
 
-_yield :: proc "contextless" () {
-}
+_yield :: proc "contextless" () {}
