@@ -3,13 +3,9 @@
 odin/LLVM-C.dll
 odin/libs/libLLVM.dylib
 
-<<<<<<< Updated upstream
-out/
-=======
 archsim_core/out/
 
 archsim_web/node_modules/
 archsim_web/dist
 archsim_web/dist-ssr
 archsim_web/*.local
->>>>>>> Stashed changes

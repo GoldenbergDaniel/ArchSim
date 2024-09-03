@@ -1,8 +1,7 @@
 <div>
-  <input type="text" placeholder="enter text here" bind:value={inputStr}>
-  <br><br>
+  <input type="text" placeholder="enter text here" bind:value={inputStr}><br><br>
   <button on:click={runOdin}>
-    Run Odin
+    Run
   </button>
 </div>
 
