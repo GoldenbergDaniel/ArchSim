@@ -16,7 +16,7 @@ Simulator :: struct
   should_quit: bool,
   step_to_next: bool,
 
-  instructions: []Instruction,
+  instructio: []Instruction,
   line_count : int,
   symbol_table: map[string]Number,
   data_section_pos: int,
@@ -137,16 +137,17 @@ sim: Simulator
 
 main :: proc()
 {
+  // gui_run()
+
+  // sim.memory = make([]byte, 1024)
+
   // memory_store_bytes(BASE_ADDRESS, bytes_from_value(510, 4))
   // value := value_from_bytes(memory_load_bytes(BASE_ADDRESS, 4))
   // fmt.println("  Memory:", sim.memory[0:4])
   // fmt.println("Expected:", 510)
   // fmt.println("  Actual:", value)
 
-  sim.registers[.X1] = 0b10010100000
-  sign_extend_register(.X1, 1)
-  sign_extend_register(.X1, 2)
-  if true do return
+  // if true do return
 
   tui_print_welcome()
 
@@ -720,7 +721,7 @@ main :: proc()
           }
 
           @(static)
-          size := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
+          size := [?]int{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
 
           bytes := memory_load_bytes(src_address, size[opcode.opcode_type])
           value := value_from_bytes(bytes)
@@ -866,22 +867,14 @@ line_index_from_address :: proc(address: Address) -> int
   return result
 }
 
-sign_extend_register :: proc(reg: RegisterID, size: uint)
+sign_extend_register :: proc(reg: RegisterID)
 {
-  assert(size == 1 || size == 2 || size == 4)
-
-  bit_mask := 0xFFFFFFFF << size * 8
-  if sim.registers[reg] & (1 << (size * 8)) != 0
-  {
-    sim.registers[reg] |= cast(Number) bit_mask
-  }
-
-  fmt.printf("%b, %i\n", sim.registers[reg], sim.registers[reg])
+  
 }
 
-memory_load_bytes :: proc(address: Address, size: uint) -> []byte
+memory_load_bytes :: proc(address: Address, size: int) -> []byte
 {
-  address := cast(uint) address
+  address := cast(int) address
   assert(address >= BASE_ADDRESS && address + size <= BASE_ADDRESS + 0xFFFF)
   address -= BASE_ADDRESS
 

@@ -235,6 +235,7 @@ tui_prompt_command :: proc() -> bool
               command.args[0] == "mem" || 
               command.args[0] == "meme"
       {
+        // fmt.println(command.args)
         address: Address
         if str_is_numeric(command.args[1])
         {

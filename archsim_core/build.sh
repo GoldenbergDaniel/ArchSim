@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 SRC="src"
 OUT="archsim"
@@ -13,4 +14,5 @@ if [[ $MODE == "rls" ]]; then FLAGS="-o:speed -no-bounds-check -no-type-assert";
 
 if [[ ! -d "out" ]]; then mkdir out; fi
 export ODIN_ROOT="../odin"
-odin build $SRC -out:out/$OUT $FLAGS -collection:ext=ext/
+$ODIN_ROOT/odin build $SRC -out:out/$OUT $FLAGS -show-timings
+

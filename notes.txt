@@ -13,6 +13,7 @@ TODO
   [X] memory (load/store)
   [~] memory view
   [X] l, s
+  [_] sign extension
   [_] the stack
   [X] breakpoints
   [_] disk storage (syscalls)
