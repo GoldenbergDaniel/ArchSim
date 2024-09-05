@@ -13,6 +13,5 @@ if [[ $MODE == "dbg" ]]; then FLAGS="-o:none -debug"; fi
 if [[ $MODE == "rls" ]]; then FLAGS="-o:speed -no-bounds-check -no-type-assert"; fi
 
 if [[ ! -d "out" ]]; then mkdir out; fi
-export ODIN_ROOT="../odin"
-$ODIN_ROOT/odin build $SRC -out:out/$OUT $FLAGS -show-timings
+odin build $SRC -out:out/$OUT $FLAGS
 
