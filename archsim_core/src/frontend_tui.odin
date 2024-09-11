@@ -52,41 +52,6 @@ command_table: map[string]TUI_CommandType = {
   "view"  = .VIEW,
 }
 
-register_names: [RegisterID]string = {
-  .X0  = "",
-  .X1  = "ra",
-  .X2  = "sp",
-  .X3  = "gp",
-  .X4  = "tp",
-  .X5  = "t0",
-  .X6  = "t1",
-  .X7  = "t2",
-  .X8  = "fp",
-  .X9  = "s1",
-  .X10 = "a0",
-  .X11 = "a1",
-  .X12 = "a2",
-  .X13 = "a3",
-  .X14 = "a4",
-  .X15 = "a5",
-  .X16 = "a6",
-  .X17 = "a7",
-  .X18 = "s2",
-  .X19 = "s3",
-  .X20 = "s4",
-  .X21 = "s5",
-  .X22 = "s6",
-  .X23 = "s7",
-  .X24 = "s8",
-  .X25 = "s9",
-  .X26 = "s10",
-  .X27 = "s11",
-  .X28 = "t3",
-  .X29 = "t4",
-  .X30 = "t5",
-  .X31 = "t6",
-}
-
 @(private="file")
 mem_view_base: TUI_Base = .HEX
 
@@ -385,7 +350,7 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
         print_register_title = false
       }
 
-      fmt.printf("%s=%i\n", register_names[reg], sim.registers[reg])
+      fmt.printf("%s=%i\n", reg, sim.registers[reg])
       sim.registers_prev[reg] = sim.registers[reg]
     }
   }
@@ -400,9 +365,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if (reg >= .X5 && reg <= .X7) || (reg >= .X28 && reg <= .X31)
+      if (reg >= .T0 && reg <= .T2) || (reg >= .T3 && reg <= .T6)
       {
-        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
     }
   }
@@ -414,9 +379,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if reg == .X8 || reg == .X9 || (reg >= .X18 && reg <= .X27)
+      if reg == .FP || reg == .S1 || (reg >= .S2 && reg <= .S11)
       {
-        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
     }
   }
@@ -428,9 +393,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if reg >= .X10 && reg <= .X17
+      if reg >= .A0 && reg <= .A7
       {
-        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
     }
   }
@@ -442,9 +407,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if reg >= .X1 && reg <= .X4
+      if reg >= .RA && reg <= .TP
       {
-        fmt.printf(" %s=%i\n", register_names[reg], sim.registers[reg])
+        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
     }
   }

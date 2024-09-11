@@ -76,10 +76,10 @@ OpcodeType :: enum
 
 RegisterID :: enum
 {
-  X0, X1, X2, X3, X4, X5, X6, X7, 
-  X8, X9, X10, X11, X12, X13, X14, X15, 
-  X16, X17, X18, X19, X20, X21, X22, X23, 
-  X24, X25, X26, X27, X28, X29, X30, X31, 
+  ZR, RA, SP, GP, TP, T0, T1, T2, 
+  FP, S1, A0, A1, A2, A3, A4, A5, 
+  A6, A7, S2, S3, S4, S5, S6, S7, 
+  S8, S9, S10, S11, T3, T4, T5, T6, 
 }
 
 Operand :: union
@@ -171,6 +171,7 @@ main :: proc()
 
   sim.instructions = make([]Instruction, MAX_LINES)
   sim.memory = make([]byte, MEMORY_SIZE)
+  sim.step_to_next = true
 
   // Tokenize ----------------
   {
@@ -467,8 +468,6 @@ main :: proc()
     }
   }
 
-  sim.step_to_next = true
-
   // Execute ----------------
   for line_num := sim.text_section_pos; line_num < sim.line_count;
   {
@@ -685,12 +684,12 @@ main :: proc()
             case .JAL:
             {
               should_jump = true
-              sim.registers[.X1] = cast(Number) target_line_num + 1
+              sim.registers[.RA] = cast(Number) target_line_num + 1
             }
             case .JALR:
             {
               should_jump = true
-              sim.registers[.X1] = cast(Number) target_line_num + 1
+              sim.registers[.RA] = cast(Number) target_line_num + 1
               target_line_num = line_index_from_address(Address(target_line_num))
             }
           }
@@ -966,38 +965,38 @@ register_from_token :: proc(token: Token) -> (RegisterID, bool)
 
   switch token.data
   {
-    case "x0", "zero": result = .X0
-    case "x1", "ra":   result = .X1
-    case "x2", "sp":   result = .X2
-    case "x3", "gp":   result = .X3
-    case "x4", "tp":   result = .X4
-    case "x5", "t0":   result = .X5
-    case "x6", "t1":   result = .X6
-    case "x7", "t2":   result = .X7
-    case "x8", "fp":   result = .X8
-    case "x9", "s1":   result = .X9
-    case "x10", "a0":  result = .X10
-    case "x11", "a1":  result = .X11
-    case "x12", "a2":  result = .X12
-    case "x13", "a3":  result = .X13
-    case "x14", "a4":  result = .X14
-    case "x15", "a5":  result = .X15
-    case "x16", "a6":  result = .X16
-    case "x17", "a7":  result = .X17
-    case "x18", "s2":  result = .X18
-    case "x19", "s3":  result = .X19
-    case "x20", "s4":  result = .X20
-    case "x21", "s5":  result = .X21
-    case "x22", "s6":  result = .X22
-    case "x23", "s7":  result = .X23
-    case "x24", "s8":  result = .X24
-    case "x25", "s9":  result = .X25
-    case "x26", "s10": result = .X26
-    case "x27", "s11": result = .X27
-    case "x28", "t3":  result = .X28
-    case "x29", "t4":  result = .X29
-    case "x30", "t5":  result = .X30
-    case "x31", "t6":  result = .X31
+    case "x0", "zero": result = .ZR
+    case "x1", "ra":   result = .RA
+    case "x2", "sp":   result = .SP
+    case "x3", "gp":   result = .GP
+    case "x4", "tp":   result = .TP
+    case "x5", "t0":   result = .T0
+    case "x6", "t1":   result = .T1
+    case "x7", "t2":   result = .T2
+    case "x8", "fp":   result = .FP
+    case "x9", "s1":   result = .S1
+    case "x10", "a0":  result = .A0
+    case "x11", "a1":  result = .A1
+    case "x12", "a2":  result = .A2
+    case "x13", "a3":  result = .A3
+    case "x14", "a4":  result = .A4
+    case "x15", "a5":  result = .A5
+    case "x16", "a6":  result = .A6
+    case "x17", "a7":  result = .A7
+    case "x18", "s2":  result = .S2
+    case "x19", "s3":  result = .S3
+    case "x20", "s4":  result = .S4
+    case "x21", "s5":  result = .S5
+    case "x22", "s6":  result = .S6
+    case "x23", "s7":  result = .S7
+    case "x24", "s8":  result = .S8
+    case "x25", "s9":  result = .S9
+    case "x26", "s10": result = .S10
+    case "x27", "s11": result = .S11
+    case "x28", "t3":  result = .T3
+    case "x29", "t4":  result = .T4
+    case "x30", "t5":  result = .T5
+    case "x31", "t6":  result = .T6
     case: err = true
   }
 
