@@ -14,4 +14,3 @@ if [[ $MODE == "rls" ]]; then FLAGS="-o:speed -no-bounds-check -no-type-assert";
 
 if [[ ! -d "out" ]]; then mkdir out; fi
 odin build $SRC -out:out/$OUT $FLAGS
-
