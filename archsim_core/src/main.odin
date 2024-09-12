@@ -143,10 +143,10 @@ main :: proc()
   // fmt.println("Expected:", 510)
   // fmt.println("  Actual:", value)
 
-  sim.registers[.X1] = 0b10010100000
-  sign_extend_register(.X1, 1)
-  sign_extend_register(.X1, 2)
-  if true do return
+  // sim.registers[.X1] = 0b10010100000
+  // sign_extend_register(.X1, 1)
+  // sign_extend_register(.X1, 2)
+  // if true do return
 
   tui_print_welcome()
 

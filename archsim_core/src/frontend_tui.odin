@@ -196,9 +196,7 @@ tui_prompt_command :: proc() -> bool
 
         tui_print_register_view(set)
       }
-      else if command.args[0] == "m" || 
-              command.args[0] == "mem" || 
-              command.args[0] == "meme"
+      else if command.args[0] == "m" || command.args[0] == "mem" || command.args[0] == "meme"
       {
         address: Address
         if str_is_numeric(command.args[1])
@@ -241,8 +239,8 @@ tui_prompt_command :: proc() -> bool
         err: bool
         switch command.args[1]
         {
-          case "2", "bin", "binary": mem_view_base = .BIN
-          case "10", "dec", "decimal": mem_view_base = .DEC
+          case "2", "bin", "binary":       mem_view_base = .BIN
+          case "10", "dec", "decimal":     mem_view_base = .DEC
           case "16", "hex", "hexadecimal": mem_view_base = .HEX
           case: err = true
         }
