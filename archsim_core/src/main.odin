@@ -17,7 +17,7 @@ Simulator :: struct
   step_to_next: bool,
 
   instructions: []Instruction,
-  line_count : int,
+  line_count: int,
   symbol_table: map[string]Number,
   data_section_pos: int,
   text_section_pos: int,

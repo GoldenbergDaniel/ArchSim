@@ -283,7 +283,7 @@ tui_print_welcome :: proc()
 {
   term.color(.GRAY)
   fmt.print("======= ARCH SIM =======\n")
-  fmt.print("Type [r] to run program or [s] to step next instruction.\n")
+  fmt.print("Type [r] to run program or [s] to step to next instruction.\n")
   fmt.print("Type [h] for a list of commands.\n")
   term.color(.WHITE)
 }
@@ -414,6 +414,14 @@ tui_print_memory_view :: proc(address: Address, base: TUI_Base)
     
     term.color(.WHITE)
   }
+  else
+  {
+    term.color(.RED)
+    fmt.print("[ERROR]: Invalid address.\n")
+    term.color(.WHITE)
+
+    break
+  }
 }
 
 tui_print_commands_list :: proc()
@@ -429,10 +437,10 @@ tui_print_commands_list :: proc()
   fmt.print("  list         |   list breakpoints\n")
   fmt.print(" v, view       |   view simulator contents\n")
   fmt.print("  r, reg 'G'   |   view registers of group 'G'\n")
-  fmt.print("  m, mem       |   view memory (NOT IMPLEMENTED)\n")
+  fmt.print("  m, mem 'A'   |   view memory around address 'A'\n")
 }
 
-// @Error /////////////////////////////////////////////////////////////////////////////
+// @Error //////////////////////////////////////////////////////////////////////
 
 TUI_Error :: union
 {
@@ -454,7 +462,7 @@ tui_resolve_error :: proc(error: TUI_Error) -> bool
   if error == nil do return false
 
   term.color(.RED)
-  fmt.print("[COMMAND ERROR]: Invalid command.\n")
+  fmt.print("[ERROR]: Invalid command.\n")
   term.color(.WHITE)
 
   return true
