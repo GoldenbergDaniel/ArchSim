@@ -96,51 +96,45 @@ str_to_int :: proc(str: string) -> int
 
   switch str_get_number_base(str)
   {
-    case 2:
+  case 2:
+    for i: uint = 2; i < len(str); i += 1
     {
-      for i: uint = 2; i < len(str); i += 1
-      {
-        result += int(str[i] - 48) * int(pow_uint(2, len(str)-i-1))
-      }
+      result += int(str[i] - 48) * int(pow_uint(2, len(str)-i-1))
     }
-    case 10:
+  case 10:
+    // @TODO(dg): This.
+    is_negative: bool
+    if str[0] == '-'
     {
-      // @TODO(dg): This.
-      is_negative: bool
-      if str[0] == '-'
-      {
-        is_negative = true
-      }
-
-      digits := str
-      if is_negative
-      {
-        digits = str[1:]
-      }
-
-      for i: uint; i < len(digits); i += 1
-      {
-        result += int(digits[i] - 48) * int(pow_uint(10, len(digits)-i-1))
-      }
-
-      if is_negative
-      {
-        result *= -1
-      }
+      is_negative = true
     }
-    case 16:
-    {
-      @(static)
-      hex_table: [128]u8 = {
-        '0' = 0,  '1' = 1,  '2' = 2,  '3' = 3,  '4' = 4,  '5' = 5,  '6' = 6,  '7' = 7,
-        '8' = 8,  '9' = 9,  'a' = 10, 'b' = 11, 'c' = 12, 'd' = 13, 'e' = 14, 'f' = 15,
-        'A' = 10, 'B' = 11, 'C' = 12, 'D' = 13, 'E' = 14, 'F' = 15,
-      }
 
-      for i: uint = len(str)-1; i >= 2; i -= 1
-      {
-        result += int(hex_table[str[i]]) * int(pow_uint(16, len(str)-i-1))
-      }
+    digits := str
+    if is_negative
+    {
+      digits = str[1:]
+    }
+
+    for i: uint; i < len(digits); i += 1
+    {
+      result += int(digits[i] - 48) * int(pow_uint(10, len(digits)-i-1))
+    }
+
+    if is_negative
+    {
+      result *= -1
+    }
+  case 16:
+    @(static)
+    hex_table: [128]u8 = {
+      '0' = 0,  '1' = 1,  '2' = 2,  '3' = 3,  '4' = 4,  '5' = 5,  '6' = 6,  '7' = 7,
+      '8' = 8,  '9' = 9,  'a' = 10, 'b' = 11, 'c' = 12, 'd' = 13, 'e' = 14, 'f' = 15,
+      'A' = 10, 'B' = 11, 'C' = 12, 'D' = 13, 'E' = 14, 'F' = 15,
+    }
+
+    for i: uint = len(str)-1; i >= 2; i -= 1
+    {
+      result += int(hex_table[str[i]]) * int(pow_uint(16, len(str)-i-1))
     }
   }
 

@@ -61,7 +61,7 @@ tui_prompt_command :: proc() -> bool
 
   buf: [64]byte
   term.color(.GRAY)
-  fmt.print("\n|> ")
+  fmt.print("\n(archsim) ")
   term.color(.WHITE)
   input_len, _ := os.read(os.stdin, buf[:])
   
@@ -81,192 +81,170 @@ tui_prompt_command :: proc() -> bool
 
   switch command.type
   {
-    case .QUIT:
-    {
-      sim.should_quit = true
-      done = true
-    }
-    case .HELP:
-    {
-      tui_print_commands_list()
-      done = false
-    }
-    case .STEP:
-    {
-      sim.step_to_next = true
-      done = true
-    }
-    case .CONTINUE:
-    {
-      sim.step_to_next = false
-      done = true
-    }
-    case .BREAKPOINT:
-    {
-      modifier: string
-      line_idx: int
+  case .QUIT:
+    sim.should_quit = true
+    done = true
+  case .HELP:
+    tui_print_commands_list()
+    done = false
+  case .STEP:
+    sim.step_to_next = true
+    done = true
+  case .CONTINUE:
+    sim.step_to_next = false
+    done = true
+  case .BREAKPOINT:
+    modifier: string
+    line_idx: int
 
-      if str_is_numeric(command.args[0])
+    if str_is_numeric(command.args[0])
+    {
+      line_idx = str_to_int(command.args[0]) - 1
+      
+      if sim.instructions[line_idx].has_breakpoint
       {
-        line_idx = str_to_int(command.args[0]) - 1
-        
-        if sim.instructions[line_idx].has_breakpoint
+        term.color(.GRAY)
+        fmt.printf("Breakpoint at line %i.\n", line_idx + 1)
+        term.color(.WHITE)
+      }
+    }
+    else
+    {
+      modifier = command.args[0]
+      if command.args[1] != ""
+      {
+        line_idx = str_to_int(command.args[1]) - 1
+      }
+
+      switch modifier
+      {
+      case "set":
+        if sim.instructions[line_idx].has_breakpoint == false
         {
-          term.color(.GRAY)
-          fmt.printf("Breakpoint at line %i.\n", line_idx + 1)
+          sim.instructions[line_idx].has_breakpoint = true
+
+          term.color(.GREEN)
+          fmt.printf("Breakpoint set at line %i.\n", line_idx + 1)
           term.color(.WHITE)
         }
-      }
-      else
-      {
-        modifier = command.args[0]
-        if command.args[1] != ""
+      case "rem":
+        if sim.instructions[line_idx].has_breakpoint == true
         {
-          line_idx = str_to_int(command.args[1]) - 1
+          sim.instructions[line_idx].has_breakpoint = false
+
+          term.color(.ORANGE)
+          fmt.printf("Breakpoint removed at line %i.\n", line_idx + 1)
+          term.color(.WHITE)
+        }
+      case "clear":
+        for i in 0..<MAX_LINES
+        {
+          sim.instructions[i].has_breakpoint = false
         }
 
-        switch modifier
+        term.color(.ORANGE)
+        fmt.print("Breakpoints cleared.\n")
+        term.color(.WHITE)
+      case "list":
+        term.color(.GRAY)
+        fmt.print("Breakpoints:\n")
+        term.color(.WHITE)
+
+        for i in 0..<MAX_LINES
         {
-          case "set":
+          if sim.instructions[i].has_breakpoint == true
           {
-            if sim.instructions[line_idx].has_breakpoint == false
-            {
-              sim.instructions[line_idx].has_breakpoint = true
-
-              term.color(.GREEN)
-              fmt.printf("Breakpoint set at line %i.\n", line_idx + 1)
-              term.color(.WHITE)
-            }
-          }
-          case "rem":
-          {
-            if sim.instructions[line_idx].has_breakpoint == true
-            {
-              sim.instructions[line_idx].has_breakpoint = false
-
-              term.color(.ORANGE)
-              fmt.printf("Breakpoint removed at line %i.\n", line_idx + 1)
-              term.color(.WHITE)
-            }
-          }
-          case "clear":
-          {
-            for i in 0..<MAX_LINES
-            {
-              sim.instructions[i].has_breakpoint = false
-            }
-
-            term.color(.ORANGE)
-            fmt.print("Breakpoints cleared.\n")
-            term.color(.WHITE)
-          }
-          case "list":
-          {
-            term.color(.GRAY)
-            fmt.print("Breakpoints:\n")
-            term.color(.WHITE)
-
-            for i in 0..<MAX_LINES
-            {
-              if sim.instructions[i].has_breakpoint == true
-              {
-                fmt.printf(" %i\n", i)
-              }
-            }
+            fmt.printf(" %i\n", i)
           }
         }
       }
-      
-      done = false
     }
-    case .VIEW:
+    
+    done = false
+  case .VIEW:
+    if command.args[0] == "r" || command.args[0] == "reg"
     {
-      if command.args[0] == "r" || command.args[0] == "reg"
+      set: TUI_RegisterViewSet
+      switch command.args[1]
       {
-        set: TUI_RegisterViewSet
-        switch command.args[1]
-        {
-          case "":                     set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
-          case "all":                  set = {.TEMPORARIES, .SAVED, .ARGUMENTS, .EXTRAS}
-          case "temps", "temp", "t":   set = {.TEMPORARIES}
-          case "saved", "s":           set = {.SAVED}
-          case "args", "arg", "a":     set = {.ARGUMENTS}
-          case "extras", "extra", "x": set = {.EXTRAS}
-        }
-
-        tui_print_register_view(set)
+      case "":                     set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
+      case "all":                  set = {.TEMPORARIES, .SAVED, .ARGUMENTS, .EXTRAS}
+      case "temps", "temp", "t":   set = {.TEMPORARIES}
+      case "saved", "s":           set = {.SAVED}
+      case "args", "arg", "a":     set = {.ARGUMENTS}
+      case "extras", "extra", "x": set = {.EXTRAS}
       }
-      else if command.args[0] == "m" || command.args[0] == "mem" || command.args[0] == "meme"
+
+      tui_print_register_view(set)
+    }
+    else if command.args[0] == "m" || command.args[0] == "mem"
+    {
+      address: Address
+      if str_is_numeric(command.args[1])
       {
-        address: Address
-        if str_is_numeric(command.args[1])
+        address = cast(Address) str_to_int(command.args[1])
+      }
+      else 
+      {
+        reg, err := register_from_token(Token{data=command.args[1]})
+        if !err
         {
-          address = cast(Address) str_to_int(command.args[1])
+          address = cast(Address) sim.registers[reg]
         }
-        else 
+        else
         {
-          reg, err := register_from_token(Token{data=command.args[1]})
-          if !err
+          val, ok := sim.symbol_table[command.args[1]]
+          if !ok
           {
-            address = cast(Address) sim.registers[reg]
+            fmt.println("ERROR: Invalid address")
+            done = false
+            return done
           }
           else
           {
-            val, ok := sim.symbol_table[command.args[1]]
-            if !ok
-            {
-              fmt.println("ERROR: Invalid address")
-              done = false
-              return done
-            }
-            else
-            {
-              address = cast(Address) val
-            }
+            address = cast(Address) val
           }
         }
-
-        offset: int
-        if str_is_numeric(command.args[2])
-        {
-          offset = str_to_int(command.args[2])
-        }
-
-        tui_print_memory_view(address + Address(offset), mem_view_base)
       }
-      else if command.args[0] == "base" || command.args[0] == "mode"
+
+      offset: int
+      if str_is_numeric(command.args[2])
       {
-        err: bool
-        switch command.args[1]
-        {
-          case "2", "bin", "binary":       mem_view_base = .BIN
-          case "10", "dec", "decimal":     mem_view_base = .DEC
-          case "16", "hex", "hexadecimal": mem_view_base = .HEX
-          case: err = true
-        }
+        offset = str_to_int(command.args[2])
+      }
 
-        if err
-        {
-          term.color(.RED)
-          fmt.print("Invalid base. Must be 2, 10, or 16.\n")
-          term.color(.WHITE)
-        }
+      tui_print_memory_view(address + Address(offset), mem_view_base)
+    }
+    else if command.args[0] == "base" || command.args[0] == "mode"
+    {
+      err: bool
+      switch command.args[1]
+      {
+      case "2", "bin", "binary":       mem_view_base = .BIN
+      case "10", "dec", "decimal":     mem_view_base = .DEC
+      case "16", "hex", "hexadecimal": mem_view_base = .HEX
+      case: err = true
+      }
+
+      if err
+      {
+        term.color(.RED)
+        fmt.print("Invalid base. Must be 2, 10, or 16.\n")
+        term.color(.WHITE)
       }
     }
-    case .NONE:
-    {
-      term.color(.RED)
-      fmt.print("Please enter a valid command.\n")
-      term.color(.WHITE)
+  case .NONE:
+    term.color(.RED)
+    fmt.print("Please enter a valid command.\n")
+    term.color(.WHITE)
 
-      done = false
-    }
+    done = false
   }
   
   return done
 }
 
-// @DOC(dg): Expects a string without leading whitespace
+// NOTE(dg): Expects a string without leading whitespace
 tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
 {
   result: TUI_Command
@@ -429,9 +407,9 @@ tui_print_memory_view :: proc(address: Address, base: TUI_Base)
 
     switch base
     {
-      case .BIN: fmt.printf("%X : %b\n", a, sim.memory[a - BASE_ADDRESS])
-      case .DEC: fmt.printf("%X : %i\n", a, sim.memory[a - BASE_ADDRESS])
-      case .HEX: fmt.printf("%X : %X\n", a, sim.memory[a - BASE_ADDRESS])
+    case .BIN: fmt.printf("%X : %b\n", a, sim.memory[a - BASE_ADDRESS])
+    case .DEC: fmt.printf("%X : %i\n", a, sim.memory[a - BASE_ADDRESS])
+    case .HEX: fmt.printf("%X : %X\n", a, sim.memory[a - BASE_ADDRESS])
     }
     
     term.color(.WHITE)

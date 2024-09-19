@@ -1,10 +1,10 @@
-$define ADDRESS 0x10000FF0
+.equ ADDRESS 0x10000FF0
 
-$byte BYTE 0xAA
-$half HALF 0xBBBB
-$word WORD 0xCCCCCCCC
+.byte BYTE 0xAA
+.half HALF 0xBBBB
+.word WORD 0xCCCCCCCC
 
-$text
+.section .text
       add t0, t0, 3
       sb  t0, ADDRESS[0]
       lh  t1, ADDRESS[0]

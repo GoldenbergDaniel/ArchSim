@@ -4,7 +4,7 @@ MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-BASE_ADDRESS     :: 0x1000_0000
+BASE_ADDRESS     :: 0x10_00_00_00
 MEMORY_SIZE      :: 65535
 INSTRUCTION_SIZE :: 4
 
@@ -137,17 +137,6 @@ sim: Simulator
 
 main :: proc()
 {
-  // memory_store_bytes(BASE_ADDRESS, bytes_from_value(510, 4))
-  // value := value_from_bytes(memory_load_bytes(BASE_ADDRESS, 4))
-  // fmt.println("  Memory:", sim.memory[0:4])
-  // fmt.println("Expected:", 510)
-  // fmt.println("  Actual:", value)
-
-  // sim.registers[.X1] = 0b10010100000
-  // sign_extend_register(.X1, 1)
-  // sign_extend_register(.X1, 2)
-  // if true do return
-
   tui_print_welcome()
 
   src_file_path := "res/main.asm"
@@ -184,7 +173,7 @@ main :: proc()
       if line_start == line_end
       {
         line_start = line_end + 1
-
+        
         end_of_file := line_end == len(src_data) - 1
         if end_of_file do break
         else           do continue
@@ -223,10 +212,10 @@ main :: proc()
         tokenizer: Tokenizer
         tokenizer.end = len(line_bytes)
 
-        // Ignore commented section
-        for i in 0..<tokenizer.end-1
+        // Ignore commented portion
+        for i in 0..<tokenizer.end
         {
-          if line_bytes[i] == '/' && line_bytes[i+1] == '/'
+          if line_bytes[i] == '#'
           {
             tokenizer.end = i
             break
@@ -316,7 +305,7 @@ main :: proc()
           }
 
           // Tokenize directive
-          if tok_str[0] == '$'
+          if tok_str[0] == '.'
           {
             line.tokens[token_cnt] = Token{data=tok_str, type=.DIRECTIVE}
             token_cnt += 1
@@ -364,42 +353,35 @@ main :: proc()
 
         switch instruction.tokens[0].data
         {
-          case "$define":
-          {
-            val := cast(Number) str_to_int(instruction.tokens[2].data)
-            sim.symbol_table[instruction.tokens[1].data] = val
-          }
-          case "$byte":
-          {
-            val := cast(Number) str_to_int(instruction.tokens[2].data)
-            bytes := bytes_from_value(val, 1)
+        case ".equ":
+          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          sim.symbol_table[instruction.tokens[1].data] = val
+        case ".byte":
+          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          bytes := bytes_from_value(val, 1)
 
-            address := BASE_ADDRESS + data_offset
-            memory_store_bytes(address, bytes)
-            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
-            data_offset += 1
-          }
-          case "$half":
-          {
-            val := cast(Number) str_to_int(instruction.tokens[2].data)
-            bytes := bytes_from_value(val, 2)
+          address := BASE_ADDRESS + data_offset
+          memory_store_bytes(address, bytes)
+          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          data_offset += 1
+        case ".half":
+          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          bytes := bytes_from_value(val, 2)
 
-            address := BASE_ADDRESS + data_offset
-            memory_store_bytes(address, bytes)
-            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
-            data_offset += 2
-          }
-          case "$word":
-          {
-            val := cast(Number) str_to_int(instruction.tokens[2].data)
-            bytes := bytes_from_value(val, 4)
+          address := BASE_ADDRESS + data_offset
+          memory_store_bytes(address, bytes)
+          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          data_offset += 2
+        case ".word":
+          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          bytes := bytes_from_value(val, 4)
 
-            address := BASE_ADDRESS + data_offset
-            memory_store_bytes(address, bytes)
-            sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
-            data_offset += 4
-          }
-          case "$text":
+          address := BASE_ADDRESS + data_offset
+          memory_store_bytes(address, bytes)
+          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          data_offset += 4
+        case ".section":
+          if instruction.tokens[1].data == ".text"
           {
             sim.text_section_pos = line_num + 1
           }
@@ -523,234 +505,226 @@ main :: proc()
 
     switch opcode.opcode_type
     {
-      case .NIL: panic("NIL opcode")
-      case .NOP: {}
-      case .MV:
+    case .NIL: panic("NIL opcode")
+    case .NOP: {}
+    case .MV:
+      dest_reg, err0 := operand_from_operands(operands[:], 0)
+      op1_reg, err1  := operand_from_operands(operands[:], 1)
+      
+      error = err0 || err1
+      if !error
       {
-        dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg, err1  := operand_from_operands(operands[:], 1)
+        val: Number
+        switch v in op1_reg
+        {
+          case Number:   val = v
+          case RegisterID: val = sim.registers[v]
+        }
+
+        sim.registers[dest_reg.(RegisterID)] = val
+      }
+    case .ADD: fallthrough
+    case .SUB: fallthrough
+    case .AND: fallthrough
+    case .OR:  fallthrough
+    case .XOR: fallthrough
+    case .NOT: fallthrough
+    case .NEG: fallthrough
+    case .SLL: fallthrough
+    case .SRL: fallthrough
+    case .SRA: fallthrough
+    case .LUI:
+      dest_reg, err0 := operand_from_operands(operands[:], 0)
+      op1_reg,  err1 := operand_from_operands(operands[:], 1)
+      op2_reg,  err2 := operand_from_operands(operands[:], 2)
+
+      error = err0 || err1 || err2
+      if !error
+      {
+        val1, val2: Number
         
-        error = err0 || err1
-        if !error
+        switch v in op1_reg
         {
-          val: Number
-          switch v in op1_reg
-          {
-            case Number:   val = v
-            case RegisterID: val = sim.registers[v]
-          }
+          case Number:     val1 = v
+          case RegisterID: val1 = sim.registers[v]
+        }
 
-          sim.registers[dest_reg.(RegisterID)] = val
+        switch v in op2_reg
+        {
+          case Number:     val2 = v
+          case RegisterID: val2 = sim.registers[v]
+        }
+        
+        result: Number
+        #partial switch instruction.tokens[0].opcode_type
+        {
+          case .ADD:   result = val1 + val2
+          case .SUB:   result = val1 - val2
+          case .AND:   result = val1 & val2
+          case .OR:    result = val1 | val2
+          case .XOR:   result = val1 | val2
+          case .NOT:   result = ~val1
+          case .NEG:   result = -result
+          case .SLL:   result = val1 << u64(val2)
+          case .SRL:   {}
+          case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
+          case .LUI:   result = val1 << 12
+        }
+
+        sim.registers[dest_reg.(RegisterID)] = result
+      }
+    case .BEQ:  fallthrough
+    case .BNE:  fallthrough
+    case .BLT:  fallthrough
+    case .BGT:  fallthrough
+    case .BLE:  fallthrough
+    case .BGE:  fallthrough
+    case .BEQZ: fallthrough
+    case .BNEZ: fallthrough
+    case .BLTZ: fallthrough
+    case .BGTZ: fallthrough
+    case .BLEZ: fallthrough
+    case .BGEZ:
+      oper1, err0 := operand_from_operands(operands[:], 0)
+      oper2, err1 := operand_from_operands(operands[:], 1)
+      dest, err2  := operand_from_operands(operands[:], 2)
+
+      error = err0 || err1 || err2
+      if !error
+      {
+        val1, val2: Number
+
+        switch v in oper1
+        {
+          case Number:     val1 = v
+          case RegisterID: val1 = sim.registers[v]
+        }
+
+        switch v in oper2
+        {
+          case Number:     val2 = v
+          case RegisterID: val2 = sim.registers[v]
+        }
+
+        should_jump: bool
+        #partial switch opcode.opcode_type
+        {
+          case .BEQ:  should_jump = val1 == val2
+          case .BNE:  should_jump = val1 != val2
+          case .BLT:  should_jump = val1 < val2
+          case .BGT:  should_jump = val1 > val2
+          case .BLE:  should_jump = val1 <= val2
+          case .BGE:  should_jump = val1 >= val2
+          case .BEQZ: should_jump = val1 == 0
+          case .BNEZ: should_jump = val1 != 0
+          case .BLTZ: should_jump = val1 < 0
+          case .BGTZ: should_jump = val1 > 0
+          case .BLEZ: should_jump = val1 <= 0
+          case .BGEZ: should_jump = val1 >= 0
+        }
+
+        if should_jump
+        {
+          sim.branch_to_idx = cast(int) dest.(Number)
         }
       }
-      case .ADD: fallthrough
-      case .SUB: fallthrough
-      case .AND: fallthrough
-      case .OR:  fallthrough
-      case .XOR: fallthrough
-      case .NOT: fallthrough
-      case .NEG: fallthrough
-      case .SLL: fallthrough
-      case .SRL: fallthrough
-      case .SRA: fallthrough
-      case .LUI:
+    case .J:   fallthrough
+    case .JR:  fallthrough
+    case .JAL: fallthrough
+    case .JALR:
+      oper, err0 := operand_from_operands(operands[:], 0)
+
+      target_line_num: int
+      if opcode.opcode_type == .JR || opcode.opcode_type == .JALR
       {
-        dest_reg, err0 := operand_from_operands(operands[:], 0)
-        op1_reg,  err1 := operand_from_operands(operands[:], 1)
-        op2_reg,  err2 := operand_from_operands(operands[:], 2)
+        target_line_num = cast(int) sim.registers[oper.(RegisterID)]
+      }
+      else
+      {
+        target_line_num = cast(int) oper.(Number)
+      }
 
-        error = err0 || err1 || err2
-        if !error
+      error = err0
+      if !error
+      {
+        should_jump: bool
+        #partial switch opcode.opcode_type
         {
-          val1, val2: Number
-          
-          switch v in op1_reg
+          case .J:   should_jump = true
+          case .JR:
           {
-            case Number:     val1 = v
-            case RegisterID: val1 = sim.registers[v]
+            should_jump = true
+            target_line_num = line_index_from_address(Address(target_line_num))
           }
+          case .JAL:
+          {
+            should_jump = true
+            sim.registers[.RA] = cast(Number) target_line_num + 1
+          }
+          case .JALR:
+          {
+            should_jump = true
+            sim.registers[.RA] = cast(Number) target_line_num + 1
+            target_line_num = line_index_from_address(Address(target_line_num))
+          }
+        }
 
-          switch v in op2_reg
-          {
-            case Number:     val2 = v
-            case RegisterID: val2 = sim.registers[v]
-          }
-          
-          result: Number
-          #partial switch instruction.tokens[0].opcode_type
-          {
-            case .ADD:   result = val1 + val2
-            case .SUB:   result = val1 - val2
-            case .AND:   result = val1 & val2
-            case .OR:    result = val1 | val2
-            case .XOR:   result = val1 | val2
-            case .NOT:   result = ~val1
-            case .NEG:   result = -result
-            case .SLL:   result = val1 << u64(val2)
-            case .SRL:   {}
-            case .SRA:   result = val1 >> u64(val2)
-            case .LUI:   result = val1 << 12
-          }
-
-          sim.registers[dest_reg.(RegisterID)] = result
+        if should_jump
+        {
+          sim.branch_to_idx = target_line_num
         }
       }
-      case .BEQ:  fallthrough
-      case .BNE:  fallthrough
-      case .BLT:  fallthrough
-      case .BGT:  fallthrough
-      case .BLE:  fallthrough
-      case .BGE:  fallthrough
-      case .BEQZ: fallthrough
-      case .BNEZ: fallthrough
-      case .BLTZ: fallthrough
-      case .BGTZ: fallthrough
-      case .BLEZ: fallthrough
-      case .BGEZ:
+    case .LB: fallthrough
+    case .LH: fallthrough
+    case .LW:
+      dest, err0 := operand_from_operands(operands[:], 0)
+      src, err1  := operand_from_operands(operands[:], 1)
+      off, err2  := operand_from_operands(operands[:], 2)
+
+      error = err0 || err1 || err2
+      if !error
       {
-        oper1, err0 := operand_from_operands(operands[:], 0)
-        oper2, err1 := operand_from_operands(operands[:], 1)
-        dest, err2  := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
+        src_address := cast(Address) off.(Number)
+        switch v in src
         {
-          val1, val2: Number
-
-          switch v in oper1
-          {
-            case Number:     val1 = v
-            case RegisterID: val1 = sim.registers[v]
-          }
-
-          switch v in oper2
-          {
-            case Number:     val2 = v
-            case RegisterID: val2 = sim.registers[v]
-          }
-
-          should_jump: bool
-          #partial switch opcode.opcode_type
-          {
-            case .BEQ:  should_jump = val1 == val2
-            case .BNE:  should_jump = val1 != val2
-            case .BLT:  should_jump = val1 < val2
-            case .BGT:  should_jump = val1 > val2
-            case .BLE:  should_jump = val1 <= val2
-            case .BGE:  should_jump = val1 >= val2
-            case .BEQZ: should_jump = val1 == 0
-            case .BNEZ: should_jump = val1 != 0
-            case .BLTZ: should_jump = val1 < 0
-            case .BGTZ: should_jump = val1 > 0
-            case .BLEZ: should_jump = val1 <= 0
-            case .BGEZ: should_jump = val1 >= 0
-          }
-
-          if should_jump
-          {
-            sim.branch_to_idx = cast(int) dest.(Number)
-          }
+          case Number:     src_address += cast(Address) v
+          case RegisterID: src_address += cast(Address) sim.registers[v]
         }
+
+        @(static)
+        size := [?]uint{
+          OpcodeType.LB = 1, 
+          OpcodeType.LH = 2, 
+          OpcodeType.LW = 4
+        }
+
+        bytes := memory_load_bytes(src_address, size[opcode.opcode_type])
+        value := value_from_bytes(bytes)
+        sim.registers[dest.(RegisterID)] = value
       }
-      case .J:   fallthrough
-      case .JR:  fallthrough
-      case .JAL: fallthrough
-      case .JALR:
+    case .SB: fallthrough
+    case .SH: fallthrough
+    case .SW:
+      src, err0  := operand_from_operands(operands[:], 0)
+      dest, err1 := operand_from_operands(operands[:], 1)
+      off, err2  := operand_from_operands(operands[:], 2)
+
+      error = err0 || err1 || err2
+      if !error
       {
-        oper, err0 := operand_from_operands(operands[:], 0)
-
-        target_line_num: int
-        if opcode.opcode_type == .JR || opcode.opcode_type == .JALR
+        dest_address := cast(Address) off.(Number)
+        switch v in dest
         {
-          target_line_num = cast(int) sim.registers[oper.(RegisterID)]
-        }
-        else
-        {
-          target_line_num = cast(int) oper.(Number)
+          case Number:     dest_address += cast(Address) v
+          case RegisterID: dest_address += cast(Address) sim.registers[v]
         }
 
-        error = err0
-        if !error
-        {
-          should_jump: bool
-          #partial switch opcode.opcode_type
-          {
-            case .J:   should_jump = true
-            case .JR:
-            {
-              should_jump = true
-              target_line_num = line_index_from_address(Address(target_line_num))
-            }
-            case .JAL:
-            {
-              should_jump = true
-              sim.registers[.RA] = cast(Number) target_line_num + 1
-            }
-            case .JALR:
-            {
-              should_jump = true
-              sim.registers[.RA] = cast(Number) target_line_num + 1
-              target_line_num = line_index_from_address(Address(target_line_num))
-            }
-          }
+        @(static)
+        size := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
 
-          if should_jump
-          {
-            sim.branch_to_idx = target_line_num
-          }
-        }
-      }
-      case .LB: fallthrough
-      case .LH: fallthrough
-      case .LW:
-      {
-        dest, err0 := operand_from_operands(operands[:], 0)
-        src, err1  := operand_from_operands(operands[:], 1)
-        off, err2  := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
-        {
-          src_address := cast(Address) off.(Number)
-          switch v in src
-          {
-            case Number:     src_address += cast(Address) v
-            case RegisterID: src_address += cast(Address) sim.registers[v]
-          }
-
-          @(static)
-          size := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
-
-          bytes := memory_load_bytes(src_address, size[opcode.opcode_type])
-          value := value_from_bytes(bytes)
-          sim.registers[dest.(RegisterID)] = value
-        }
-      }
-      case .SB: fallthrough
-      case .SH: fallthrough
-      case .SW:
-      {
-        src, err0  := operand_from_operands(operands[:], 0)
-        dest, err1 := operand_from_operands(operands[:], 1)
-        off, err2  := operand_from_operands(operands[:], 2)
-
-        error = err0 || err1 || err2
-        if !error
-        {
-          dest_address := cast(Address) off.(Number)
-          switch v in dest
-          {
-            case Number:     dest_address += cast(Address) v
-            case RegisterID: dest_address += cast(Address) sim.registers[v]
-          }
-
-          @(static)
-          size := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
-
-          value := sim.registers[src.(RegisterID)]
-          bytes := bytes_from_value(value, size[opcode.opcode_type])
-          memory_store_bytes(dest_address, bytes)
-        }
+        value := sim.registers[src.(RegisterID)]
+        bytes := bytes_from_value(value, size[opcode.opcode_type])
+        memory_store_bytes(dest_address, bytes)
       }
     }
 
@@ -781,7 +755,7 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   end = start
   for i in start..<length
   {
-    if (buf[i] == '\n' || buf[i] == '\r') 
+    if (buf[i] == '\n' || buf[i] == '\r')
     {
       end = i
       break
@@ -827,7 +801,6 @@ address_from_line_index :: proc(line_num: int) -> Address
   return result
 }
 
-// @TODO(dg): Not good. Needs a simplification rewrite.
 line_index_from_address :: proc(address: Address) -> int
 {
   assert(int(address - BASE_ADDRESS) < sim.line_count * INSTRUCTION_SIZE)
@@ -865,17 +838,25 @@ line_index_from_address :: proc(address: Address) -> int
   return result
 }
 
-sign_extend_register :: proc(reg: RegisterID, size: uint)
+arithmetic_shift_right :: proc(number: Number, shift: uint) -> Number
 {
-  assert(size == 1 || size == 2 || size == 4)
+  number := number  
 
-  bit_mask := 0xFFFFFFFF << size * 8
-  if sim.registers[reg] & (1 << (size * 8)) != 0
+  for _ in 0..<shift
   {
-    sim.registers[reg] |= cast(Number) bit_mask
+    BIT_31 :: 1 << 31
+    if number & transmute(Number) u32(BIT_31) != 0
+    {
+      number >>= 1
+      number |= transmute(Number) u32(BIT_31)
+    }
+    else
+    {
+      number >>= 1
+    }
   }
 
-  fmt.printf("%b, %i\n", sim.registers[reg], sim.registers[reg])
+  return number
 }
 
 memory_load_bytes :: proc(address: Address, size: uint) -> []byte
@@ -927,7 +908,7 @@ bytes_from_value :: proc(value: Number, size: int) -> []byte
   return result
 }
 
-// @Token /////////////////////////////////////////////////////////////////////////////
+// @Token //////////////////////////////////////////////////////////////////////
 
 Token :: struct
 {
@@ -965,39 +946,39 @@ register_from_token :: proc(token: Token) -> (RegisterID, bool)
 
   switch token.data
   {
-    case "x0", "zero": result = .ZR
-    case "x1", "ra":   result = .RA
-    case "x2", "sp":   result = .SP
-    case "x3", "gp":   result = .GP
-    case "x4", "tp":   result = .TP
-    case "x5", "t0":   result = .T0
-    case "x6", "t1":   result = .T1
-    case "x7", "t2":   result = .T2
-    case "x8", "fp":   result = .FP
-    case "x9", "s1":   result = .S1
-    case "x10", "a0":  result = .A0
-    case "x11", "a1":  result = .A1
-    case "x12", "a2":  result = .A2
-    case "x13", "a3":  result = .A3
-    case "x14", "a4":  result = .A4
-    case "x15", "a5":  result = .A5
-    case "x16", "a6":  result = .A6
-    case "x17", "a7":  result = .A7
-    case "x18", "s2":  result = .S2
-    case "x19", "s3":  result = .S3
-    case "x20", "s4":  result = .S4
-    case "x21", "s5":  result = .S5
-    case "x22", "s6":  result = .S6
-    case "x23", "s7":  result = .S7
-    case "x24", "s8":  result = .S8
-    case "x25", "s9":  result = .S9
-    case "x26", "s10": result = .S10
-    case "x27", "s11": result = .S11
-    case "x28", "t3":  result = .T3
-    case "x29", "t4":  result = .T4
-    case "x30", "t5":  result = .T5
-    case "x31", "t6":  result = .T6
-    case: err = true
+  case "x0", "zero": result = .ZR
+  case "x1", "ra":   result = .RA
+  case "x2", "sp":   result = .SP
+  case "x3", "gp":   result = .GP
+  case "x4", "tp":   result = .TP
+  case "x5", "t0":   result = .T0
+  case "x6", "t1":   result = .T1
+  case "x7", "t2":   result = .T2
+  case "x8", "fp":   result = .FP
+  case "x9", "s1":   result = .S1
+  case "x10", "a0":  result = .A0
+  case "x11", "a1":  result = .A1
+  case "x12", "a2":  result = .A2
+  case "x13", "a3":  result = .A3
+  case "x14", "a4":  result = .A4
+  case "x15", "a5":  result = .A5
+  case "x16", "a6":  result = .A6
+  case "x17", "a7":  result = .A7
+  case "x18", "s2":  result = .S2
+  case "x19", "s3":  result = .S3
+  case "x20", "s4":  result = .S4
+  case "x21", "s5":  result = .S5
+  case "x22", "s6":  result = .S6
+  case "x23", "s7":  result = .S7
+  case "x24", "s8":  result = .S8
+  case "x25", "s9":  result = .S9
+  case "x26", "s10": result = .S10
+  case "x27", "s11": result = .S11
+  case "x28", "t3":  result = .T3
+  case "x29", "t4":  result = .T4
+  case "x30", "t5":  result = .T5
+  case "x31", "t6":  result = .T6
+  case: err = true
   }
 
   return result, err
@@ -1059,7 +1040,7 @@ print_tokens_at :: proc(line_num: int)
   fmt.print("\n")
 }
 
-// @ParserError ///////////////////////////////////////////////////////////////////////
+// @ParserError ////////////////////////////////////////////////////////////////
 
 ParserError :: union
 {
@@ -1109,25 +1090,24 @@ resolve_parser_error :: proc(error: ParserError) -> bool
   
   switch v in error
   {
-    case SyntaxError:
+  case SyntaxError:
+    switch v.type
     {
-      switch v.type
-      {
-        case .MISSING_COLON: fmt.printf("Missing colon after label on line %i.\n", 
-                                        v.line)
-        case .MISSING_IDENTIFIER: fmt.printf("")
-        case .MISSING_LITERAL: fmt.printf("")
-        case .UNIDENTIFIED_IDENTIFIER: fmt.printf("")
-      }
+    case .MISSING_COLON: 
+      fmt.printf("Missing colon after label on line %i.\n", v.line)
+    case .MISSING_IDENTIFIER: 
+      fmt.printf("")
+    case .MISSING_LITERAL: 
+      fmt.printf("")
+    case .UNIDENTIFIED_IDENTIFIER: 
+      fmt.printf("")
     }
-    case TypeError:
-    {
-      fmt.printf("Type mismatch on line %i. Expected \'%s\', got \'%s\'.\n", 
-                 v.line, 
-                 v.expected_type, 
-                 v.actual_type)
-    }
-    case OpcodeError: {}
+  case TypeError:
+    fmt.printf("Type mismatch on line %i. Expected \'%s\', got \'%s\'.\n", 
+                v.line, 
+                v.expected_type, 
+                v.actual_type)
+  case OpcodeError:
   }
 
   term.color(.WHITE)
@@ -1135,7 +1115,7 @@ resolve_parser_error :: proc(error: ParserError) -> bool
   return true
 }
 
-// @Imports ////////////////////////////////////////////////////////////////////////////
+// @Imports ////////////////////////////////////////////////////////////////////
 
 import "core:fmt"
 import "core:os"

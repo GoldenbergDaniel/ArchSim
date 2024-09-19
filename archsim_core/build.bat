@@ -2,18 +2,21 @@
 setlocal
 
 set SRC=src
-set OUT=archsim.exe
+set OUT=out/archsim.exe
 
-set KIND=dev
-if "%1%"=="d" set KIND=dbg
-if "%1%"=="r" set KIND=rls
+set MODE=dev
+if "%1%"=="d" set MODE=debug
+if "%1%"=="r" set MODE=release
 
-if "%KIND%"=="dev" set FLAGS=-o:none -use-separate-modules
-if "%KIND%"=="dbg" set FLAGS=-o:none -debug
-if "%KIND%"=="rls" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
+if "%MODE%"=="dev"     set FLAGS=-o:none -use-separate-modules
+if "%MODE%"=="debug"   set FLAGS=-o:none -debug
+if "%MODE%"=="release" set FLAGS=-o:speed -no-bounds-check -no-type-assert -disable-assert
 
-set MODE=build
-if "%KIND%"=="dev" set MODE=run
+set ACTION=build
+@REM if "%ACTION%"=="dev" set ACTION=run
+
+echo [package:%SRC%]
+echo [mode:%MODE%]
 
 if not exist out mkdir out
-odin %MODE% %SRC% -out:out/%OUT% %FLAGS%
+odin %ACTION% %SRC% -out:%OUT% %FLAGS% || exit /b 1
