@@ -1,5 +1,10 @@
 package main
 
+import "core:fmt"
+import "core:os"
+
+import "term"
+
 TUI_Command :: struct
 {
   type: TUI_CommandType,
@@ -63,6 +68,7 @@ tui_prompt_command :: proc() -> bool
   term.color(.GRAY)
   fmt.print("\n(archsim) ")
   term.color(.WHITE)
+
   input_len, _ := os.read(os.stdin, buf[:])
   
   cmd_str := str_strip_crlf(string(buf[:input_len]))
@@ -334,7 +340,7 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
 
 tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 {
-  // Print temporaries
+  // Print temporaries ----------------
   if .TEMPORARIES in which
   {
     fmt.print("[temporaries]\n")
@@ -348,7 +354,7 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     }
   }
 
-  // Print saved
+  // Print saved ----------------
   if .SAVED in which
   {
     fmt.print("[saved]\n")
@@ -362,7 +368,7 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     }
   }
 
-  // Print arguments
+  // Print arguments ----------------
   if .ARGUMENTS in which
   {
     fmt.print("[arguments]\n")
@@ -376,7 +382,7 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     }
   }
 
-  // Print extras
+  // Print extras ----------------
   if .EXTRAS in which
   {
     fmt.print("[extras]\n")
@@ -393,9 +399,9 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
 tui_print_memory_view :: proc(address: Address, base: TUI_Base)
 {
-  for a in address-3..=address+3 do if address_is_valid(a)
+  for addr in address-3..=address+3 do if address_is_valid(addr)
   {
-    if a == address
+    if addr == address
     {
       term.color(.GREEN)
       fmt.print(" > ")
@@ -407,9 +413,12 @@ tui_print_memory_view :: proc(address: Address, base: TUI_Base)
 
     switch base
     {
-    case .BIN: fmt.printf("%X : %b\n", a, sim.memory[a - BASE_ADDRESS])
-    case .DEC: fmt.printf("%X : %i\n", a, sim.memory[a - BASE_ADDRESS])
-    case .HEX: fmt.printf("%X : %X\n", a, sim.memory[a - BASE_ADDRESS])
+    case .BIN:
+      fmt.printf("%X : %b\n", addr, sim.memory[addr - BASE_ADDRESS])
+    case .DEC:
+      fmt.printf("%X : %i\n", addr, sim.memory[addr - BASE_ADDRESS])
+    case .HEX:
+      fmt.printf("%X : %X\n", addr, sim.memory[addr - BASE_ADDRESS])
     }
     
     term.color(.WHITE)
@@ -467,8 +476,3 @@ tui_resolve_error :: proc(error: TUI_Error) -> bool
 
   return true
 }
-
-import "core:fmt"
-import "core:os"
-
-import "term"

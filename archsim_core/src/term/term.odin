@@ -1,5 +1,7 @@
 package term
 
+import "core:fmt"
+
 @(private)
 current_color: ColorKind
 
@@ -51,5 +53,3 @@ cursor_mode :: proc(mode: CursorMode)
   case .BLINK:   fmt.print("\u001b[25m")
   }
 }
-
-import "core:fmt"

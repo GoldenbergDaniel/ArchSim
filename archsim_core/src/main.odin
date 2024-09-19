@@ -1,5 +1,11 @@
 package main
 
+import "core:fmt"
+import vmem "core:mem/virtual"
+import "core:os"
+
+import "term"
+
 MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
@@ -137,6 +143,15 @@ sim: Simulator
 
 main :: proc()
 {
+  perm_arena: vmem.Arena
+  {
+    err := vmem.arena_init_static(&perm_arena)
+    if err != nil do return
+  }
+
+  perm_arena_allocator := vmem.arena_allocator(&perm_arena)
+  context.allocator = perm_arena_allocator
+
   tui_print_welcome()
 
   src_file_path := "res/main.asm"
@@ -407,10 +422,10 @@ main :: proc()
       error: ParserError
       instruction := sim.instructions[line_num]
 
-      if  instruction.tokens[0].line >= sim.text_section_pos && 
-          instruction.tokens[0].type == .IDENTIFIER && 
-          instruction.tokens[0].opcode_type == .NIL &&
-          instruction.tokens[1].type == .OPCODE
+      if instruction.tokens[0].line >= sim.text_section_pos && 
+         instruction.tokens[0].type == .IDENTIFIER && 
+         instruction.tokens[0].opcode_type == .NIL &&
+         instruction.tokens[1].type == .OPCODE
       {
         error = SyntaxError{
           type = .MISSING_COLON,
@@ -1114,10 +1129,3 @@ resolve_parser_error :: proc(error: ParserError) -> bool
 
   return true
 }
-
-// @Imports ////////////////////////////////////////////////////////////////////
-
-import "core:fmt"
-import "core:os"
-
-import "term"

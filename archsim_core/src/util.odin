@@ -1,6 +1,6 @@
 package main
 
-// @String //////////////////////////////////////////////////////////////////////////////
+import "core:math"
 
 str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
 {
@@ -97,12 +97,11 @@ str_to_int :: proc(str: string) -> int
   switch str_get_number_base(str)
   {
   case 2:
-    for i: uint = 2; i < len(str); i += 1
+    for i := 2; i < len(str); i += 1
     {
-      result += int(str[i] - 48) * int(pow_uint(2, len(str)-i-1))
+      result += int(str[i] - 48) * int(math.pow(2, f32(len(str)-i-1)))
     }
   case 10:
-    // @TODO(dg): This.
     is_negative: bool
     if str[0] == '-'
     {
@@ -115,9 +114,9 @@ str_to_int :: proc(str: string) -> int
       digits = str[1:]
     }
 
-    for i: uint; i < len(digits); i += 1
+    for i := 0; i < len(digits); i += 1
     {
-      result += int(digits[i] - 48) * int(pow_uint(10, len(digits)-i-1))
+      result += int(digits[i] - 48) * int(math.pow(10, f32(len(digits)-i-1)))
     }
 
     if is_negative
@@ -132,9 +131,9 @@ str_to_int :: proc(str: string) -> int
       'A' = 10, 'B' = 11, 'C' = 12, 'D' = 13, 'E' = 14, 'F' = 15,
     }
 
-    for i: uint = len(str)-1; i >= 2; i -= 1
+    for i := len(str)-1; i >= 2; i -= 1
     {
-      result += int(hex_table[str[i]]) * int(pow_uint(16, len(str)-i-1))
+      result += int(hex_table[str[i]]) * int(math.pow(16, f32(len(str)-i-1)))
     }
   }
 
@@ -172,18 +171,4 @@ str_find_char :: proc(str: string, chr: byte, begin := 0) -> (loc: int)
   }
 
   return loc
-}
-
-// @Math ////////////////////////////////////////////////////////////////////////////////
-
-pow_uint :: proc(base, exp: uint) -> uint
-{
-  result: uint = 1
-  
-  for i: uint; i < exp; i += 1
-  {
-    result *= base
-  }
-
-  return result
 }
