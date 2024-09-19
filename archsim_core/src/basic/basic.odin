@@ -127,24 +127,16 @@ arena_allocator_proc :: proc(allocator_data: rawptr,
 	arena := cast(^Arena) allocator_data
 	switch mode
   {
-	  case .Alloc, .Alloc_Non_Zeroed:
-    {
-      ptr := arena_push_bytes(arena, size, alignment)
-      byte_slice := ([^]u8) (ptr)[:max(size, 0)]
-      return byte_slice, nil
-    }
-    case .Free:
-    {
-      arena_pop_bytes(arena, size)
-    }
-    case .Free_All:
-    {
-      arena_clear(arena)
-    }
-    case .Query_Features, .Query_Info, .Resize, .Resize_Non_Zeroed:
-    {
-      return nil, .Mode_Not_Implemented
-    }
+	case .Alloc, .Alloc_Non_Zeroed:
+    ptr := arena_push_bytes(arena, size, alignment)
+    byte_slice := ([^]u8) (ptr)[:max(size, 0)]
+    return byte_slice, nil
+  case .Free:
+    arena_pop_bytes(arena, size)
+  case .Free_All:
+    arena_clear(arena)
+  case .Query_Features, .Query_Info, .Resize, .Resize_Non_Zeroed:
+    return nil, .Mode_Not_Implemented
 	}
 
 	return nil, nil
