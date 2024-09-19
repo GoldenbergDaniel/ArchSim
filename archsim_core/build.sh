@@ -1,19 +1,23 @@
 #!/bin/bash
-set -e
 
-SRC="src"
-OUT="out/archsim"
+SOURCE="src"
+OUTPUT="out/archsim"
 
 MODE="dev"
 if [[ $1 == "d" ]]; then MODE="debug"; fi
 if [[ $1 == "r" ]]; then MODE="release"; fi
 
+TARGET="darwin_amd64"
+if [[ $1 == "-target" ]]; then TARGET=$2; fi
+if [[ $2 == "-target" ]]; then TARGET=$3; fi
+
 if [[ $MODE == "dev" ]];     then FLAGS="-o:none -use-separate-modules"; fi
 if [[ $MODE == "debug" ]];   then FLAGS="-o:none -debug"; fi
-if [[ $MODE == "release" ]]; then FLAGS="-o:speed -no-bounds-check -no-type-assert"; fi
+if [[ $MODE == "release" ]]; then FLAGS="-o:speed -vet -no-bounds-check -no-type-assert"; fi
 
-echo [package:$SRC]
+echo [package:$SOURCE]
+echo [target:$TARGET]
 echo [mode:$MODE]
 
 if [[ ! -d "out" ]]; then mkdir out; fi
-odin build $SRC -out:$OUT $FLAGS
+odin build $SOURCE -out:$OUTPUT -target:$TARGET $FLAGS
