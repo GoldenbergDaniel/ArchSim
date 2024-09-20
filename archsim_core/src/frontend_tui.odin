@@ -72,13 +72,7 @@ tui_prompt_command :: proc() -> bool
   input_len, _ := os.read(os.stdin, buf[:])
   
   cmd_str := str_strip_crlf(string(buf[:input_len]))
-  command, err := tui_command_from_string(cmd_str)
-
-  if tui_resolve_error(err)
-  {
-    done = false
-    return done
-  }
+  command := tui_command_from_string(cmd_str)
 
   if command.type != .QUIT
   {
@@ -189,6 +183,10 @@ tui_prompt_command :: proc() -> bool
       if str_is_numeric(command.args[1])
       {
         address = cast(Address) str_to_int(command.args[1])
+        if !address_is_valid(address)
+        {
+          tui_print_message(.ERROR, "Address out of range.")
+        }
       }
       else 
       {
@@ -202,7 +200,7 @@ tui_prompt_command :: proc() -> bool
           val, ok := sim.symbol_table[command.args[1]]
           if !ok
           {
-            fmt.println("ERROR: Invalid address")
+            tui_print_message(.ERROR, "Unidentified token for address.")
             done = false
             return done
           }
@@ -234,16 +232,11 @@ tui_prompt_command :: proc() -> bool
 
       if err
       {
-        term.color(.RED)
-        fmt.print("Invalid base. Must be 2, 10, or 16.\n")
-        term.color(.WHITE)
+        tui_print_message(.ERROR, "Invalid base. Must be 2, 10, or 16.")
       }
     }
   case .NONE:
-    term.color(.RED)
-    fmt.print("Please enter a valid command.\n")
-    term.color(.WHITE)
-
+    tui_print_message(.ERROR, "Please enter a valid command.")
     done = false
   }
   
@@ -251,15 +244,14 @@ tui_prompt_command :: proc() -> bool
 }
 
 // NOTE(dg): Expects a string without leading whitespace
-tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
+tui_command_from_string :: proc(str: string) -> TUI_Command
 {
   result: TUI_Command
-  error: TUI_Error
   length := len(str)
 
   if length == 0
   {
-    return TUI_Command{type=.STEP}, nil
+    return TUI_Command{type=.STEP}
   }
 
   start, end: int
@@ -282,7 +274,7 @@ tui_command_from_string :: proc(str: string) -> (TUI_Command, TUI_Error)
     start = end + 1
   }
 
-  return result, error
+  return result
 }
 
 tui_print_welcome :: proc()
@@ -361,7 +353,7 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if reg == .FP || reg == .S1 || (reg >= .S2 && reg <= .S11)
+      if reg == .S1 || (reg >= .S2 && reg <= .S11)
       {
         fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
@@ -389,7 +381,7 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
 
     for reg in RegisterID
     {
-      if reg >= .RA && reg <= .TP
+      if (reg >= .RA && reg <= .TP) || reg == .FP
       {
         fmt.printf(" %s=%i\n", reg, sim.registers[reg])
       }
@@ -423,14 +415,6 @@ tui_print_memory_view :: proc(address: Address, base: TUI_Base)
     
     term.color(.WHITE)
   }
-  else
-  {
-    term.color(.RED)
-    fmt.print("[ERROR]: Invalid address.\n")
-    term.color(.WHITE)
-
-    break
-  }
 }
 
 tui_print_commands_list :: proc()
@@ -449,30 +433,30 @@ tui_print_commands_list :: proc()
   fmt.print("  m, mem 'A'   |   view memory around address 'A'\n")
 }
 
-// @Error //////////////////////////////////////////////////////////////////////
-
-TUI_Error :: union
+TUI_MessageLevel :: enum
 {
-  TUI_InputError,
+  INFO,
+  WARNING,
+  ERROR,
 }
 
-TUI_InputError :: struct
+tui_print_message :: proc(level: TUI_MessageLevel, msg: string, args: ..any)
 {
-  type: TUI_InputErrorType,
-}
+  switch level
+  {
+  case .INFO:    term.color(.GRAY)
+  case .WARNING: term.color(.YELLOW)
+  case .ERROR:   term.color(.RED)
+  }
 
-TUI_InputErrorType :: enum
-{
-  EXPECTED_NUMERIC
-}
-
-tui_resolve_error :: proc(error: TUI_Error) -> bool
-{
-  if error == nil do return false
-
-  term.color(.RED)
-  fmt.print("[ERROR]: Invalid command.\n")
+  if args != nil
+  {
+    fmt.printfln(msg, args)
+  }
+  else
+  {
+    fmt.println(msg)
+  }
+  
   term.color(.WHITE)
-
-  return true
 }
