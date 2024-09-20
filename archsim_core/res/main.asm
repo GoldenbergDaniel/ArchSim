@@ -5,8 +5,5 @@
 .word WORD 0xCCCCCCCC
 
 .section .text
-      add t0, t0, 3
-      sb  t0, ADDRESS[0]
-      lh  t1, ADDRESS[0]
-      lb  t2, ADDRESS[1]
+      lw  t0, BYTE[0]
 EXIT: nop

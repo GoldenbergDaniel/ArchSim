@@ -40,6 +40,11 @@ TUI_Base :: enum
   HEX,
 }
 
+TUI_Config :: struct
+{
+  base: TUI_Base,
+}
+
 @(private="file")
 command_table: map[string]TUI_CommandType = {
   "q"     = .QUIT,
@@ -58,7 +63,7 @@ command_table: map[string]TUI_CommandType = {
 }
 
 @(private="file")
-mem_view_base: TUI_Base = .HEX
+global_config: TUI_Config = { base=.HEX }
 
 tui_prompt_command :: proc() -> bool
 {
@@ -175,7 +180,7 @@ tui_prompt_command :: proc() -> bool
       case "extras", "extra", "x": set = {.EXTRAS}
       }
 
-      tui_print_register_view(set)
+      tui_print_register_view(set, global_config.base)
     }
     else if command.args[0] == "m" || command.args[0] == "mem"
     {
@@ -217,16 +222,16 @@ tui_prompt_command :: proc() -> bool
         offset = str_to_int(command.args[2])
       }
 
-      tui_print_memory_view(address + Address(offset), mem_view_base)
+      tui_print_memory_view(address + Address(offset), global_config.base)
     }
     else if command.args[0] == "base" || command.args[0] == "mode"
     {
       err: bool
       switch command.args[1]
       {
-      case "2", "bin", "binary":       mem_view_base = .BIN
-      case "10", "dec", "decimal":     mem_view_base = .DEC
-      case "16", "hex", "hexadecimal": mem_view_base = .HEX
+      case "2", "bin", "binary":       global_config.base = .BIN
+      case "10", "dec", "decimal":     global_config.base = .DEC
+      case "16", "hex", "hexadecimal": global_config.base = .HEX
       case: err = true
       }
 
@@ -330,8 +335,11 @@ tui_print_sim_result :: proc(instruction: Instruction, idx: int)
   }
 }
 
-tui_print_register_view :: proc(which: TUI_RegisterViewSet)
+tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)
 {
+  base := base
+  base = .DEC
+
   // Print temporaries ----------------
   if .TEMPORARIES in which
   {
@@ -341,7 +349,15 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     {
       if (reg >= .T0 && reg <= .T2) || (reg >= .T3 && reg <= .T6)
       {
-        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        switch base
+        {
+        case .BIN:
+          fmt.printf(" %s=%b\n", reg, sim.registers[reg])
+        case .DEC:
+          fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        case .HEX:
+          fmt.printf(" %s=%X\n", reg, sim.registers[reg])
+        }
       }
     }
   }
@@ -355,7 +371,15 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     {
       if reg == .S1 || (reg >= .S2 && reg <= .S11)
       {
-        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        switch base
+        {
+        case .BIN:
+          fmt.printf(" %s=%b\n", reg, sim.registers[reg])
+        case .DEC:
+          fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        case .HEX:
+          fmt.printf(" %s=%X\n", reg, sim.registers[reg])
+        }
       }
     }
   }
@@ -369,7 +393,15 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     {
       if reg >= .A0 && reg <= .A7
       {
-        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        switch base
+        {
+        case .BIN:
+          fmt.printf(" %s=%b\n", reg, sim.registers[reg])
+        case .DEC:
+          fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        case .HEX:
+          fmt.printf(" %s=%X\n", reg, sim.registers[reg])
+        }
       }
     }
   }
@@ -383,7 +415,15 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet)
     {
       if (reg >= .RA && reg <= .TP) || reg == .FP
       {
-        fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        switch base
+        {
+        case .BIN:
+          fmt.printf(" %s=%b\n", reg, sim.registers[reg])
+        case .DEC:
+          fmt.printf(" %s=%i\n", reg, sim.registers[reg])
+        case .HEX:
+          fmt.printf(" %s=%X\n", reg, sim.registers[reg])
+        }
       }
     }
   }

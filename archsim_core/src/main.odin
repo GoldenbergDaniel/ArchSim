@@ -10,7 +10,7 @@ MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
 MAX_TOKENS_PER_LINE :: 8
 
-BASE_ADDRESS     :: 0x10_00_00_00
+BASE_ADDRESS     :: 0x10000000
 MEMORY_SIZE      :: 65535
 INSTRUCTION_SIZE :: 4
 
@@ -29,9 +29,10 @@ Simulator :: struct
   text_section_pos: int,
   branch_to_idx: int,
 
-  memory: []byte,
+  program_counter: int,
   registers: [RegisterID]Number,
   registers_prev: [RegisterID]Number,
+  memory: []byte,
 
   perm_arena: virtual.Arena,
   temp_arena: virtual.Arena
@@ -81,6 +82,7 @@ OpcodeType :: enum
   SW,
 
   LUI,
+  AUIPC,
 }
 
 RegisterID :: enum
@@ -140,6 +142,7 @@ opcode_table: map[string]OpcodeType = {
   "sw"    = .SW,
 
   "lui"   = .LUI,
+  "auipc" = .AUIPC,
 }
 
 sim: Simulator
@@ -187,8 +190,9 @@ main :: proc()
   sim.step_to_next = true
 
   // Tokenize ----------------
-  tokenize_code_from_bytes(src_data)
+  tokenize_source_code(src_data)
   // print_tokens()
+  // if true do return
 
   // Preprocess ----------------
   {
@@ -202,7 +206,6 @@ main :: proc()
 
       instruction := sim.instructions[line_num]
 
-      // Directives
       if instruction.tokens[0].type == .DIRECTIVE
       {
         if len(instruction.tokens) < 2 do continue
@@ -214,23 +217,26 @@ main :: proc()
           sim.symbol_table[instruction.tokens[1].data] = val
         case ".byte":
           val := cast(Number) str_to_int(instruction.tokens[2].data)
-          bytes := bytes_from_value(val, 1)
+          bytes := bytes_from_value(val, 1, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
+
           sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
           data_offset += 1
         case ".half":
           val := cast(Number) str_to_int(instruction.tokens[2].data)
-          bytes := bytes_from_value(val, 2)
+          bytes := bytes_from_value(val, 2, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
+
           sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
           data_offset += 2
         case ".word":
           val := cast(Number) str_to_int(instruction.tokens[2].data)
-          bytes := bytes_from_value(val, 4)
+          bytes := bytes_from_value(val, 4, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
+          
           sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
           data_offset += 4
         case ".section":
@@ -308,8 +314,8 @@ main :: proc()
 
     switch opcode.opcode_type
     {
-    case .NIL: panic("NIL opcode")
-    case .NOP: {}
+    case .NIL: panic("NIL opcode!")
+    case .NOP:
     case .MV:
       dest_reg, err0 := operand_from_operands(operands[:], 0)
       op1_reg, err1  := operand_from_operands(operands[:], 1)
@@ -336,7 +342,8 @@ main :: proc()
     case .SLL: fallthrough
     case .SRL: fallthrough
     case .SRA: fallthrough
-    case .LUI:
+    case .LUI: fallthrough
+    case .AUIPC:
       dest_reg, err0 := operand_from_operands(operands[:], 0)
       op1_reg,  err1 := operand_from_operands(operands[:], 1)
       op2_reg,  err2 := operand_from_operands(operands[:], 2)
@@ -361,17 +368,18 @@ main :: proc()
         result: Number
         #partial switch instruction.tokens[0].opcode_type
         {
-          case .ADD:   result = val1 + val2
-          case .SUB:   result = val1 - val2
-          case .AND:   result = val1 & val2
-          case .OR:    result = val1 | val2
-          case .XOR:   result = val1 | val2
-          case .NOT:   result = ~val1
-          case .NEG:   result = -result
-          case .SLL:   result = val1 << u64(val2)
-          case .SRL:   {}
-          case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
-          case .LUI:   result = val1 << 12
+        case .ADD:   result = val1 + val2
+        case .SUB:   result = val1 - val2
+        case .AND:   result = val1 & val2
+        case .OR:    result = val1 | val2
+        case .XOR:   result = val1 | val2
+        case .NOT:   result = ~val1
+        case .NEG:   result = -result
+        case .SLL:   result = val1 << uint(val2)
+        case .SRL:   result = val1 >> uint(val2)
+        case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
+        case .LUI:   result = val1 << 12
+        case .AUIPC: result = Number(sim.program_counter) + val1 << 12
         }
 
         sim.registers[dest_reg.(RegisterID)] = result
@@ -490,13 +498,10 @@ main :: proc()
         }
 
         @(static)
-        size := [?]uint{
-          OpcodeType.LB = 1, 
-          OpcodeType.LH = 2, 
-          OpcodeType.LW = 4
-        }
+        sizes := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
 
-        bytes := memory_load_bytes(src_address, size[opcode.opcode_type])
+        type := opcode.opcode_type
+        bytes := memory_load_bytes(src_address, sizes[type])
         value := value_from_bytes(bytes)
         sim.registers[dest.(RegisterID)] = value
       }
@@ -518,10 +523,11 @@ main :: proc()
         }
 
         @(static)
-        size := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
-
+        sizes := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
+        
+        type := opcode.opcode_type
         value := sim.registers[src.(RegisterID)]
-        bytes := bytes_from_value(value, size[opcode.opcode_type])
+        bytes := bytes_from_value(value, sizes[type], context.temp_allocator)
         memory_store_bytes(dest_address, bytes)
       }
     }
@@ -665,8 +671,8 @@ memory_store_bytes :: proc(address: Address, bytes: []byte)
 value_from_bytes :: proc(bytes: []byte) -> Number
 {
   result: Number
+  
   size := len(bytes)
-
   assert(size == 1 || size == 2 || size == 4 || size == 8)
 
   for i in 0..<size
@@ -677,9 +683,9 @@ value_from_bytes :: proc(bytes: []byte) -> Number
   return result
 }
 
-bytes_from_value :: proc(value: Number, size: int) -> []byte
+bytes_from_value :: proc(value: Number, size: int, arena: Allocator) -> []byte
 {
-  result: []byte = make([]byte, size)
+  result: []byte = make([]byte, size, arena)
 
   for i in 0..<size
   {

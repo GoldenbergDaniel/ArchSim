@@ -1,8 +1,11 @@
 package main
 
+import "core:mem"
 import "core:math"
 
-str_to_lower :: proc(str: string, allocator := context.temp_allocator) -> string
+Allocator :: mem.Allocator
+
+str_to_lower :: proc(str: string, allocator: Allocator) -> string
 {
   result := make([]byte, len(str), allocator)
   

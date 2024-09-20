@@ -33,7 +33,7 @@ Instruction :: struct
   has_breakpoint: bool,
 }
 
-tokenize_code_from_bytes :: proc(src_data: []byte)
+tokenize_source_code :: proc(src_data: []byte)
 {
   line_start, line_end: int
   for line_idx := 0; line_end < len(src_data); line_idx += 1
@@ -121,7 +121,7 @@ tokenize_code_from_bytes :: proc(src_data: []byte)
           }
           else if b == ':' || b == '=' || b == ',' || b == ' ' || b == '[' || b == ']'
           {
-            offset = int(i == tokenizer.pos)
+            offset = cast(int) (i == tokenizer.pos)
             break
           }
         }
@@ -143,7 +143,7 @@ tokenize_code_from_bytes :: proc(src_data: []byte)
 
         // Tokenize opcode
         { 
-          tok_str_lower := str_to_lower(tok_str)
+          tok_str_lower := str_to_lower(tok_str, context.temp_allocator)
           op_type := opcode_table[tok_str_lower]
           if op_type != .NIL
           {
@@ -205,7 +205,7 @@ tokenize_code_from_bytes :: proc(src_data: []byte)
 
 error_check_instructions :: proc()
 {
-  // Syntax
+  // Syntax ----------------
   for line_num := 0; line_num < sim.line_count; line_num += 1
   {
     if sim.instructions[line_num].tokens == nil do continue
@@ -229,7 +229,7 @@ error_check_instructions :: proc()
     if resolve_parser_error(error) do return
   }
 
-  // Semantics
+  // Semantics ----------------
   for line_num := 0; line_num < sim.line_count; line_num += 1
   {
     if sim.instructions[line_num].tokens == nil do continue
