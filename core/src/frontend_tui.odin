@@ -291,11 +291,8 @@ tui_print_welcome :: proc()
   term.color(.WHITE)
 }
 
-tui_print_sim_result :: proc(instruction: Line)
+tui_print_sim_result :: proc(instruction: Line, next_idx: int)
 {
-  line_idx := instruction.line_idx
-  next_line_idx := sim.instructions[sim.next_instruction_idx].line_idx
-
   term.color(.GRAY)
   fmt.print("Instruction:  ")
   term.color(.WHITE)
@@ -306,17 +303,17 @@ tui_print_sim_result :: proc(instruction: Line)
       fmt.print(tok.data, "")
     }
   }
-  fmt.printf(" (line %i)\n", line_idx+1)
+  fmt.printf(" (line %i)\n", instruction.line_idx+1)
 
   term.color(.GRAY)
   fmt.print("Address:      ")
   term.color(.WHITE)
-  fmt.printf("%#X\n", address_from_line_index(line_idx))
+  fmt.printf("%#X\n", address_from_instruction_index(sim.program_counter))
 
   term.color(.GRAY)
   fmt.print("Next address: ")
   term.color(.WHITE)
-  fmt.printf("%#X\n", address_from_line_index(next_line_idx))
+  fmt.printf("%#X\n", address_from_instruction_index(next_idx))
 
   print_register_title := true
   for reg in RegisterID
@@ -336,11 +333,6 @@ tui_print_sim_result :: proc(instruction: Line)
       sim.registers_prev[reg] = sim.registers[reg]
     }
   }
-
-  term.color(.GRAY)
-  fmt.print("PC:           ")
-  term.color(.WHITE)
-  fmt.println(sim.program_counter)
 }
 
 tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)

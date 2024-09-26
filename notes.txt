@@ -12,9 +12,10 @@ TODO
   [X] program counter 
   [X] memory (load/store)
   [~] memory view
-  [X] l, s
   [X] sra
-  [_] the stack
+  [_] org directive
+  [_] ascii strings
+  [X] procedure calls
   [X] breakpoints
   [_] disk storage (syscalls)
 

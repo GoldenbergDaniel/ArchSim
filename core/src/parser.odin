@@ -84,9 +84,9 @@ tokenize_source_code :: proc(src_data: []byte)
       tokenizer.end = len(line_bytes)
 
       // Ignore commented portion
-      for i in 0..<tokenizer.end
+      for i in 0..<tokenizer.end-1
       {
-        if line_bytes[i] == '#'
+        if line_bytes[i] == '/' && line_bytes[i+1] == '/'
         {
           tokenizer.end = i
           break
@@ -208,12 +208,10 @@ tokenize_source_code :: proc(src_data: []byte)
 error_check_instructions :: proc()
 {
   // Syntax ----------------
-  for line_num := 0; line_num < sim.line_count; line_num += 1
+  for instruction_idx := 0; instruction_idx < sim.instruction_count; instruction_idx += 1
   {
-    if sim.lines[line_num].tokens == nil do continue
-
     error: ParserError
-    instruction := sim.lines[line_num]
+    instruction := sim.instructions[instruction_idx]
 
     if instruction.tokens[0].line >= sim.text_section_pos && 
         instruction.tokens[0].type == .IDENTIFIER && 
@@ -232,14 +230,12 @@ error_check_instructions :: proc()
   }
 
   // Semantics ----------------
-  for line_num := 0; line_num < sim.line_count; line_num += 1
+  for instruction_idx := 0; instruction_idx < sim.instruction_count; instruction_idx += 1
   {
-    if sim.lines[line_num].tokens == nil do continue
-
     error: ParserError
-    instruction := sim.lines[line_num]
+    instruction := sim.instructions[instruction_idx]
 
-    if line_num >= sim.text_section_pos
+    if instruction_idx >= sim.text_section_pos
     {
       if instruction.tokens[0].opcode_type == .NIL && 
           instruction.tokens[2].opcode_type == .NIL
@@ -367,10 +363,6 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
       result, ok = sim.symbol_table[token.data]
       err = !ok
     }
-  }
-  else
-  {
-    err = true
   }
 
   return result, err

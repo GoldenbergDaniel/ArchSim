@@ -45,7 +45,9 @@ OpcodeType :: enum
   NIL,
 
   NOP,
+
   MV,
+  LI,
   
   ADD,
   SUB,
@@ -62,6 +64,7 @@ OpcodeType :: enum
   JR,
   JAL,
   JALR,
+  RET,
 
   BEQ,
   BNE,
@@ -105,7 +108,9 @@ opcode_table: map[string]OpcodeType = {
   ""      = .NIL,
 
   "nop"   = .NOP,
+
   "mv"    = .MV,
+  "li"    = .LI,
 
   "add"   = .ADD,
   "sub"   = .SUB,
@@ -122,6 +127,7 @@ opcode_table: map[string]OpcodeType = {
   "jr"    = .JR,
   "jal"   = .JAL,
   "jalr"  = .JALR,
+  "ret"   = .RET,
 
   "beq"   = .BEQ,
   "bne"   = .BNE,
@@ -322,21 +328,21 @@ main :: proc()
     {
     case .NIL: panic("NIL opcode!")
     case .NOP:
-    case .MV:
+    case .MV: fallthrough
+    case .LI:
       dest_reg, err0 := operand_from_operands(operands[:], 0)
       op1_reg, err1  := operand_from_operands(operands[:], 1)
       
       error = err0 || err1
       if !error
       {
-        val: Number
-        switch v in op1_reg
+        #partial switch opcode.opcode_type
         {
-        case Number:     val = v
-        case RegisterID: val = sim.registers[v]
+        case .MV:
+          sim.registers[dest_reg.(RegisterID)] = sim.registers[op1_reg.(RegisterID)]
+        case .LI:
+          sim.registers[dest_reg.(RegisterID)] = op1_reg.(Number)
         }
-
-        sim.registers[dest_reg.(RegisterID)] = val
       }
     case .ADD: fallthrough
     case .SUB: fallthrough
@@ -446,45 +452,35 @@ main :: proc()
           sim.next_instruction_idx = target_branch_idx
         }
       }
-    case .J:   fallthrough
-    case .JR:  fallthrough
-    case .JAL: fallthrough
-    case .JALR:
+    case .J:    fallthrough
+    case .JR:   fallthrough
+    case .JAL:  fallthrough
+    case .JALR: fallthrough
+    case .RET:
       oper, err0 := operand_from_operands(operands[:], 0)
-
-      target_jump_idx: int
-      if opcode.opcode_type == .JR || opcode.opcode_type == .JALR
-      {
-        target_jump_idx = cast(int) sim.registers[oper.(RegisterID)]
-      }
-      else
-      {
-        target_jump_idx = cast(int) oper.(Number)
-      }
-
+      target_jump_addr := address_from_instruction_index(sim.program_counter + 1)
+      
       error = err0
       if !error
       {
-        should_jump: bool
         #partial switch opcode.opcode_type
         {
         case .J:
-          should_jump = true
+          target_jump_addr = cast(Address) oper.(Number)
         case .JR:
-          should_jump = true
+          target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
         case .JAL:
-          should_jump = true
-          sim.registers[.RA] = cast(Number) target_jump_idx + 1
+          sim.registers[.RA] = cast(Number) target_jump_addr
+          target_jump_addr = cast(Address) oper.(Number)
         case .JALR:
-          should_jump = true
-          sim.registers[.RA] = cast(Number) target_jump_idx + 1
+          sim.registers[.RA] = cast(Number) target_jump_addr
+          target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
+        case .RET:
+          target_jump_addr = cast(Address) sim.registers[.RA]
         }
 
-        if should_jump
-        {
-          target_jump_idx = instruction_index_from_address(Address(target_jump_idx))
-          sim.next_instruction_idx = target_jump_idx
-        }
+        target_jump_idx := instruction_index_from_address(target_jump_addr)
+        sim.next_instruction_idx = target_jump_idx
       }
     case .LB: fallthrough
     case .LH: fallthrough
@@ -496,18 +492,27 @@ main :: proc()
       error = err0 || err1 || err2
       if !error
       {
-        src_address := cast(Address) off.(Number)
+        src_addr: Address
+        if off != nil
+        {
+          src_addr = cast(Address) off.(Number)
+        }
+        else
+        {
+          src_addr = 0
+        }
+
         switch v in src
         {
-        case Number:     src_address += cast(Address) v
-        case RegisterID: src_address += cast(Address) sim.registers[v]
+        case Number:     src_addr += cast(Address) v
+        case RegisterID: src_addr += cast(Address) sim.registers[v]
         }
 
         @(static)
         sizes := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
 
         type := opcode.opcode_type
-        bytes := memory_load_bytes(src_address, sizes[type])
+        bytes := memory_load_bytes(src_addr, sizes[type])
         value := value_from_bytes(bytes)
         sim.registers[dest.(RegisterID)] = value
       }
@@ -547,8 +552,7 @@ main :: proc()
       return
     }
 
-    tui_print_sim_result(instruction)
-
+    tui_print_sim_result(instruction, sim.next_instruction_idx)
     sim.program_counter = sim.next_instruction_idx
 
     if !(sim.step_to_next && sim.program_counter < sim.line_count - 1)
@@ -563,20 +567,38 @@ address_is_valid :: proc(address: Address) -> bool
   return address >= BASE_ADDRESS && address <= BASE_ADDRESS + MEMORY_SIZE
 }
 
-address_from_line_index :: proc(line_idx: int) -> Address
+instruction_index_from_address :: proc(address: Address) -> int
+{
+  result: int = cast(int) address
+  result -= BASE_ADDRESS
+  result /= INSTRUCTION_SIZE
+
+  return result
+}
+
+address_from_instruction_index :: proc(idx: int) -> Address
+{
+  result: Address = cast(Address) idx
+  result *= INSTRUCTION_SIZE
+  result += BASE_ADDRESS
+
+  return result
+}
+
+address_from_line_index :: proc(idx: int) -> Address
 {
   result: Address
 
   @(static)
   line_idx_to_address_cache: [MAX_LINES]Address
 
-  if line_idx_to_address_cache[line_idx] != 0
+  if line_idx_to_address_cache[idx] != 0
   {
-    result = line_idx_to_address_cache[line_idx]
+    result = line_idx_to_address_cache[idx]
   }
   else
   {
-    for i := sim.text_section_pos; i < line_idx; i += 1
+    for i := sim.text_section_pos; i < idx; i += 1
     {
       if line_is_instruction(sim.lines[i])
       {
@@ -584,19 +606,10 @@ address_from_line_index :: proc(line_idx: int) -> Address
       }
     }
 
-    line_idx_to_address_cache[line_idx] = result
+    line_idx_to_address_cache[idx] = result
   }
 
   result += BASE_ADDRESS
-
-  return result
-}
-
-instruction_index_from_address :: proc(address: Address) -> int
-{
-  result: int = cast(int) address
-  result -= BASE_ADDRESS
-  result /= 4
 
   return result
 }
