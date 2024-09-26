@@ -7,7 +7,7 @@ MODE="dev"
 if [[ $1 == "d" ]]; then MODE="debug"; fi
 if [[ $1 == "r" ]]; then MODE="release"; fi
 
-TARGET="darwin_amd64"
+TARGET="linux_amd64"
 if [[ $1 == "-target" ]]; then TARGET=$2; fi
 if [[ $2 == "-target" ]]; then TARGET=$3; fi
 

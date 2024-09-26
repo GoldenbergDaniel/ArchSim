@@ -5,5 +5,7 @@
 .word WORD 0xCCCCCCCC
 
 .section .text
-      lw  t0, BYTE[0]
+      mv  t0, 0x1000000C
+      jr  t0
+      mv  t0, -1
 EXIT: nop

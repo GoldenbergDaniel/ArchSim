@@ -3,9 +3,9 @@
 odin/LLVM-C.dll
 odin/libs/libLLVM.dylib
 
-archsim_core/out/
+core/out/
 
-archsim_web/node_modules/
-archsim_web/dist
-archsim_web/dist-ssr
-archsim_web/*.local
+web/node_modules/
+web/dist
+web/dist-ssr
+web/*.local

@@ -22,12 +22,14 @@ Simulator :: struct
   should_quit: bool,
   step_to_next: bool,
 
-  instructions: []Instruction,
+  lines: []Line,
   line_count: int,
+  instructions: []Line,
+  instruction_count: int,
+  next_instruction_idx: int,
   symbol_table: map[string]Number,
   data_section_pos: int,
   text_section_pos: int,
-  branch_to_idx: int,
 
   program_counter: int,
   registers: [RegisterID]Number,
@@ -158,11 +160,11 @@ main :: proc()
     assert(err == nil, "Failed to initialize temp arena!")
   }
 
-  perm_arena_ally := virtual.arena_allocator(&sim.perm_arena)
-  context.allocator = perm_arena_ally
+  perm_arena_allocator := virtual.arena_allocator(&sim.perm_arena)
+  context.allocator = perm_arena_allocator
 
-  temp_arena_ally := virtual.arena_allocator(&sim.temp_arena)
-  context.temp_allocator = temp_arena_ally
+  temp_arena_allocator := virtual.arena_allocator(&sim.temp_arena)
+  context.temp_allocator = temp_arena_allocator
 
   tui_print_welcome()
 
@@ -185,7 +187,8 @@ main :: proc()
   src_data := src_buf[:src_size]
   os.close(src_file)
 
-  sim.instructions = make([]Instruction, MAX_LINES)
+  sim.lines = make([]Line, MAX_LINES)
+  sim.instructions = make([]Line, MAX_LINES)
   sim.memory = make([]byte, MEMORY_SIZE)
   sim.step_to_next = true
 
@@ -198,79 +201,82 @@ main :: proc()
   {
     data_offset: Address
 
-    for line_num := 0; line_num < sim.line_count; line_num += 1
+    for line_idx := 0; line_idx < sim.line_count; line_idx += 1
     {
       defer free_all(context.temp_allocator)
 
-      if sim.instructions[line_num].tokens == nil do continue
+      if sim.lines[line_idx].tokens == nil do continue
 
-      instruction := sim.instructions[line_num]
+      line := sim.lines[line_idx]
 
-      if instruction.tokens[0].type == .DIRECTIVE
+      if line.tokens[0].type == .DIRECTIVE
       {
-        if len(instruction.tokens) < 2 do continue
+        if len(line.tokens) < 2 do continue
 
-        switch instruction.tokens[0].data
+        switch line.tokens[0].data
         {
         case ".equ":
-          val := cast(Number) str_to_int(instruction.tokens[2].data)
-          sim.symbol_table[instruction.tokens[1].data] = val
+          val := cast(Number) str_to_int(line.tokens[2].data)
+          sim.symbol_table[line.tokens[1].data] = val
         case ".byte":
-          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          val := cast(Number) str_to_int(line.tokens[2].data)
           bytes := bytes_from_value(val, 1, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
 
-          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += 1
         case ".half":
-          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          val := cast(Number) str_to_int(line.tokens[2].data)
           bytes := bytes_from_value(val, 2, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
 
-          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += 2
         case ".word":
-          val := cast(Number) str_to_int(instruction.tokens[2].data)
+          val := cast(Number) str_to_int(line.tokens[2].data)
           bytes := bytes_from_value(val, 4, context.temp_allocator)
           address := BASE_ADDRESS + data_offset
           memory_store_bytes(address, bytes)
           
-          sim.symbol_table[instruction.tokens[1].data] = cast(Number) address
+          sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += 4
         case ".section":
-          if instruction.tokens[1].data == ".text"
+          if line.tokens[1].data == ".text"
           {
-            sim.text_section_pos = line_num + 1
+            sim.text_section_pos = line_idx + 1
           }
         }
       }
 
       // Labels
-      if instruction.tokens[0].type == .IDENTIFIER && 
-         instruction.tokens[1].type == .COLON
+      if line.tokens[0].type == .IDENTIFIER && line.tokens[1].type == .COLON
       {
-        sim.symbol_table[instruction.tokens[0].data] = cast(Number) line_num
+        address := address_from_line_index(line_idx)
+        sim.symbol_table[line.tokens[0].data] = cast(Number) address
       }
     }
+  }
+
+  // fmt.println("text pos:", sim.text_section_pos)
+
+  // Instructions from lines ----------------
+  for line in sim.lines do if line_is_instruction(line)
+  {
+    sim.instructions[sim.instruction_count] = line
+    sim.instruction_count += 1
   }
 
   // Error check ----------------
   error_check_instructions()
 
   // Execute ----------------
-  for line_num := sim.text_section_pos; line_num < sim.line_count;
+  for sim.program_counter < sim.instruction_count
   {
     defer free_all(context.temp_allocator)
 
-    if sim.instructions[line_num].tokens == nil
-    {
-      line_num += 1
-      continue
-    }
-
-    instruction := sim.instructions[line_num]
+    instruction := sim.instructions[sim.program_counter]
 
     if instruction.has_breakpoint
     {
@@ -278,7 +284,7 @@ main :: proc()
     }
 
     // Prompt user command ----------------
-    if sim.step_to_next && line_num < sim.line_count
+    if sim.step_to_next && sim.program_counter < sim.line_count
     {
       for done: bool; !done;
       {
@@ -288,7 +294,7 @@ main :: proc()
 
     if sim.should_quit do return
 
-    sim.branch_to_idx = line_num + 1
+    sim.next_instruction_idx = sim.program_counter + 1
 
     // Fetch opcode and operands ----------------
     opcode: Token
@@ -436,7 +442,8 @@ main :: proc()
 
         if should_jump
         {
-          sim.branch_to_idx = cast(int) dest.(Number)
+          target_branch_idx := instruction_index_from_address(Address(dest.(Number)))
+          sim.next_instruction_idx = target_branch_idx
         }
       }
     case .J:   fallthrough
@@ -445,14 +452,14 @@ main :: proc()
     case .JALR:
       oper, err0 := operand_from_operands(operands[:], 0)
 
-      target_line_num: int
+      target_jump_idx: int
       if opcode.opcode_type == .JR || opcode.opcode_type == .JALR
       {
-        target_line_num = cast(int) sim.registers[oper.(RegisterID)]
+        target_jump_idx = cast(int) sim.registers[oper.(RegisterID)]
       }
       else
       {
-        target_line_num = cast(int) oper.(Number)
+        target_jump_idx = cast(int) oper.(Number)
       }
 
       error = err0
@@ -465,19 +472,18 @@ main :: proc()
           should_jump = true
         case .JR:
           should_jump = true
-          target_line_num = line_index_from_address(Address(target_line_num))
         case .JAL:
           should_jump = true
-          sim.registers[.RA] = cast(Number) target_line_num + 1
+          sim.registers[.RA] = cast(Number) target_jump_idx + 1
         case .JALR:
           should_jump = true
-          sim.registers[.RA] = cast(Number) target_line_num + 1
-          target_line_num = line_index_from_address(Address(target_line_num))
+          sim.registers[.RA] = cast(Number) target_jump_idx + 1
         }
 
         if should_jump
         {
-          sim.branch_to_idx = target_line_num
+          target_jump_idx = instruction_index_from_address(Address(target_jump_idx))
+          sim.next_instruction_idx = target_jump_idx
         }
       }
     case .LB: fallthrough
@@ -535,20 +541,20 @@ main :: proc()
     if error
     {
       term.color(.RED)
-      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", line_num+1)
+      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", 
+                  instruction.line_idx+1)
       term.color(.WHITE)
       return
     }
 
-    tui_print_sim_result(instruction, line_num)
+    tui_print_sim_result(instruction)
 
-    // Set next instruction to result of branch
-    line_num = sim.branch_to_idx
+    sim.program_counter = sim.next_instruction_idx
 
-    if !(sim.step_to_next && line_num < sim.line_count - 1)
+    if !(sim.step_to_next && sim.program_counter < sim.line_count - 1)
     {
       fmt.print("\n")
-    }  
+    }
   }
 }
 
@@ -557,33 +563,40 @@ address_is_valid :: proc(address: Address) -> bool
   return address >= BASE_ADDRESS && address <= BASE_ADDRESS + MEMORY_SIZE
 }
 
-address_from_line_index :: proc(line_num: int) -> Address
+address_from_line_index :: proc(line_idx: int) -> Address
 {
-  assert(line_num < MAX_LINES)
-
   result: Address
 
   @(static)
-  line_num_to_address_cache: [MAX_LINES]Address
+  line_idx_to_address_cache: [MAX_LINES]Address
 
-  if line_num_to_address_cache[line_num] != 0
+  if line_idx_to_address_cache[line_idx] != 0
   {
-    result = line_num_to_address_cache[line_num]
+    result = line_idx_to_address_cache[line_idx]
   }
   else
   {
-    for i := sim.text_section_pos; i < line_num; i += 1
+    for i := sim.text_section_pos; i < line_idx; i += 1
     {
-      if sim.instructions[i].tokens != nil
+      if line_is_instruction(sim.lines[i])
       {
         result += INSTRUCTION_SIZE
       }
     }
 
-    line_num_to_address_cache[line_num] = result
+    line_idx_to_address_cache[line_idx] = result
   }
 
   result += BASE_ADDRESS
+
+  return result
+}
+
+instruction_index_from_address :: proc(address: Address) -> int
+{
+  result: int = cast(int) address
+  result -= BASE_ADDRESS
+  result /= 4
 
   return result
 }

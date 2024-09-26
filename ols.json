@@ -11,6 +11,6 @@
   "checker_args": "-vet",
   "profiles":
   [
-    {"name": "main", "checker_path": ["archsim_core/src"]}
+    {"name": "main", "checker_path": ["core/src"]}
   ]
 }

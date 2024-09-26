@@ -9,7 +9,7 @@ TODO
   [X] conditional branching
   [X] standardize instruction addresses (jr, jalr)
   [X] register view
-  [_] pc register
+  [X] program counter 
   [X] memory (load/store)
   [~] memory view
   [X] l, s

@@ -26,10 +26,10 @@ TokenType :: enum
   EQUALS,
 }
 
-Instruction :: struct
+Line :: struct
 {
   tokens: []Token,
-  line_num: int,
+  line_idx: int,
   has_breakpoint: bool,
 }
 
@@ -71,12 +71,12 @@ tokenize_source_code :: proc(src_data: []byte)
       }
     }
 
-    sim.instructions[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE)
+    sim.lines[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE)
     
     // Tokenize line
     {
       line_bytes := src_data[line_start:line_end]
-      line := sim.instructions[line_idx]
+      line := sim.lines[line_idx]
       token_cnt: int
 
       Tokenizer :: struct { pos, end: int }
@@ -193,13 +193,15 @@ tokenize_source_code :: proc(src_data: []byte)
     }
 
     line_start = line_end + 1
-    sim.line_count = line_idx + 1
-    
-    for &token, i in sim.instructions[sim.line_count].tokens
+ 
+    for &token, i in sim.lines[line_idx].tokens
     {
       token.line = line_idx + 1
       token.column = i
     }
+
+    sim.lines[line_idx].line_idx = line_idx
+    sim.line_count = line_idx + 1
   }
 }
 
@@ -208,10 +210,10 @@ error_check_instructions :: proc()
   // Syntax ----------------
   for line_num := 0; line_num < sim.line_count; line_num += 1
   {
-    if sim.instructions[line_num].tokens == nil do continue
+    if sim.lines[line_num].tokens == nil do continue
 
     error: ParserError
-    instruction := sim.instructions[line_num]
+    instruction := sim.lines[line_num]
 
     if instruction.tokens[0].line >= sim.text_section_pos && 
         instruction.tokens[0].type == .IDENTIFIER && 
@@ -232,10 +234,10 @@ error_check_instructions :: proc()
   // Semantics ----------------
   for line_num := 0; line_num < sim.line_count; line_num += 1
   {
-    if sim.instructions[line_num].tokens == nil do continue
+    if sim.lines[line_num].tokens == nil do continue
 
     error: ParserError
-    instruction := sim.instructions[line_num]
+    instruction := sim.lines[line_num]
 
     if line_num >= sim.text_section_pos
     {
@@ -277,7 +279,7 @@ print_tokens :: proc()
 {
   for i in 0..<sim.line_count
   {
-    for tok in sim.instructions[i].tokens
+    for tok in sim.lines[i].tokens
     {
       if tok.type == .NIL do continue
       fmt.print("{", tok.data, "|", tok.type , "}", "")
@@ -291,7 +293,7 @@ print_tokens :: proc()
 
 print_tokens_at :: proc(line_num: int)
 {
-  for tok in sim.instructions[line_num].tokens
+  for tok in sim.lines[line_num].tokens
   {
     if tok.type == .NIL do continue
     fmt.print("{", tok.data, "|", tok.type , "}", "")
@@ -372,6 +374,19 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
   }
 
   return result, err
+}
+
+line_is_instruction :: proc(line: Line) -> bool
+{
+  if line.tokens == nil do return false
+  if len(line.tokens) == 0 do return false
+  if !(line.tokens[0].type == .OPCODE) &&
+     !(line.tokens[0].type == .IDENTIFIER && line.tokens[2].type == .OPCODE)
+  {
+    return false
+  }
+
+  return true
 }
 
 // @ParserError ////////////////////////////////////////////////////////////////
