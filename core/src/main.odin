@@ -325,28 +325,22 @@ main :: proc()
       }
     }
 
-    error: bool
-
     switch opcode.opcode_type
     {
     case .NIL: panic("NIL opcode!")
     case .NOP:
     case .MV: fallthrough
     case .LI:
-      dest_reg, err0 := operand_from_operands(operands[:], 0)
-      op1_reg, err1  := operand_from_operands(operands[:], 1)
+      dest_reg, _ := operand_from_operands(operands[:], 0)
+      op1_reg, _ := operand_from_operands(operands[:], 1)
       
-      error = err0 || err1
-      if !error
+      #partial switch opcode.opcode_type
       {
-        #partial switch opcode.opcode_type
-        {
-        case .MV:
-          sim.registers[dest_reg.(RegisterID)] = sim.registers[op1_reg.(RegisterID)]
-        case .LI:
-          sim.registers[dest_reg.(RegisterID)] = op1_reg.(Number)
-        }
-      }
+      case .MV:
+        sim.registers[dest_reg.(RegisterID)] = sim.registers[op1_reg.(RegisterID)]
+      case .LI:
+        sim.registers[dest_reg.(RegisterID)] = op1_reg.(Number)
+    }
     case .ADD: fallthrough
     case .SUB: fallthrough
     case .AND: fallthrough
@@ -359,46 +353,42 @@ main :: proc()
     case .SRA: fallthrough
     case .LUI: fallthrough
     case .AUIPC:
-      dest_reg, err0 := operand_from_operands(operands[:], 0)
-      op1_reg,  err1 := operand_from_operands(operands[:], 1)
-      op2_reg,  err2 := operand_from_operands(operands[:], 2)
+      dest_reg, _ := operand_from_operands(operands[:], 0)
+      op1_reg, _ := operand_from_operands(operands[:], 1)
+      op2_reg, _ := operand_from_operands(operands[:], 2)
 
-      error = err0 || err1 || err2
-      if !error
+      val1, val2: Number
+      
+      switch v in op1_reg
       {
-        val1, val2: Number
-        
-        switch v in op1_reg
-        {
-        case Number:     val1 = v
-        case RegisterID: val1 = sim.registers[v]
-        }
-
-        switch v in op2_reg
-        {
-        case Number:     val2 = v
-        case RegisterID: val2 = sim.registers[v]
-        }
-        
-        result: Number
-        #partial switch instruction.tokens[0].opcode_type
-        {
-        case .ADD:   result = val1 + val2
-        case .SUB:   result = val1 - val2
-        case .AND:   result = val1 & val2
-        case .OR:    result = val1 | val2
-        case .XOR:   result = val1 | val2
-        case .NOT:   result = ~val1
-        case .NEG:   result = -result
-        case .SLL:   result = val1 << uint(val2)
-        case .SRL:   result = val1 >> uint(val2)
-        case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
-        case .LUI:   result = val1 << 12
-        case .AUIPC: result = Number(sim.program_counter) + val1 << 12
-        }
-
-        sim.registers[dest_reg.(RegisterID)] = result
+      case Number:     val1 = v
+      case RegisterID: val1 = sim.registers[v]
       }
+
+      switch v in op2_reg
+      {
+      case Number:     val2 = v
+      case RegisterID: val2 = sim.registers[v]
+      }
+      
+      result: Number
+      #partial switch instruction.tokens[0].opcode_type
+      {
+      case .ADD:   result = val1 + val2
+      case .SUB:   result = val1 - val2
+      case .AND:   result = val1 & val2
+      case .OR:    result = val1 | val2
+      case .XOR:   result = val1 | val2
+      case .NOT:   result = ~val1
+      case .NEG:   result = -result
+      case .SLL:   result = val1 << uint(val2)
+      case .SRL:   result = val1 >> uint(val2)
+      case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
+      case .LUI:   result = val1 << 12
+      case .AUIPC: result = Number(sim.program_counter) + val1 << 12
+
+      sim.registers[dest_reg.(RegisterID)] = result
+    }
     case .BEQ:  fallthrough
     case .BNE:  fallthrough
     case .BLT:  fallthrough
@@ -411,148 +401,123 @@ main :: proc()
     case .BGTZ: fallthrough
     case .BLEZ: fallthrough
     case .BGEZ:
-      oper1, err0 := operand_from_operands(operands[:], 0)
-      oper2, err1 := operand_from_operands(operands[:], 1)
-      dest, err2  := operand_from_operands(operands[:], 2)
+      oper1, _ := operand_from_operands(operands[:], 0)
+      oper2, _ := operand_from_operands(operands[:], 1)
+      dest, _ := operand_from_operands(operands[:], 2)
 
-      error = err0 || err1 || err2
-      if !error
+      val1, val2: Number
+
+      switch v in oper1
       {
-        val1, val2: Number
+      case Number:     val1 = v
+      case RegisterID: val1 = sim.registers[v]
+      }
 
-        switch v in oper1
-        {
-        case Number:     val1 = v
-        case RegisterID: val1 = sim.registers[v]
-        }
+      switch v in oper2
+      {
+      case Number:     val2 = v
+      case RegisterID: val2 = sim.registers[v]
+      }
 
-        switch v in oper2
-        {
-        case Number:     val2 = v
-        case RegisterID: val2 = sim.registers[v]
-        }
+      should_jump: bool
+      #partial switch opcode.opcode_type
+      {
+        case .BEQ:  should_jump = val1 == val2
+        case .BNE:  should_jump = val1 != val2
+        case .BLT:  should_jump = val1 < val2
+        case .BGT:  should_jump = val1 > val2
+        case .BLE:  should_jump = val1 <= val2
+        case .BGE:  should_jump = val1 >= val2
+        case .BEQZ: should_jump = val1 == 0
+        case .BNEZ: should_jump = val1 != 0
+        case .BLTZ: should_jump = val1 < 0
+        case .BGTZ: should_jump = val1 > 0
+        case .BLEZ: should_jump = val1 <= 0
+        case .BGEZ: should_jump = val1 >= 0
+      }
 
-        should_jump: bool
-        #partial switch opcode.opcode_type
-        {
-          case .BEQ:  should_jump = val1 == val2
-          case .BNE:  should_jump = val1 != val2
-          case .BLT:  should_jump = val1 < val2
-          case .BGT:  should_jump = val1 > val2
-          case .BLE:  should_jump = val1 <= val2
-          case .BGE:  should_jump = val1 >= val2
-          case .BEQZ: should_jump = val1 == 0
-          case .BNEZ: should_jump = val1 != 0
-          case .BLTZ: should_jump = val1 < 0
-          case .BGTZ: should_jump = val1 > 0
-          case .BLEZ: should_jump = val1 <= 0
-          case .BGEZ: should_jump = val1 >= 0
-        }
-
-        if should_jump
-        {
-          target_branch_idx := instruction_index_from_address(Address(dest.(Number)))
-          sim.next_instruction_idx = target_branch_idx
-        }
+      if should_jump
+      {
+        target_branch_idx := instruction_index_from_address(Address(dest.(Number)))
+        sim.next_instruction_idx = target_branch_idx
       }
     case .J:    fallthrough
     case .JR:   fallthrough
     case .JAL:  fallthrough
     case .JALR: fallthrough
     case .RET:
-      oper, err0 := operand_from_operands(operands[:], 0)
+      oper, _ := operand_from_operands(operands[:], 0)
       target_jump_addr := address_from_instruction_index(sim.program_counter + 1)
       
-      error = err0
-      if !error
+      #partial switch opcode.opcode_type
       {
-        #partial switch opcode.opcode_type
-        {
-        case .J:
-          target_jump_addr = cast(Address) oper.(Number)
-        case .JR:
-          target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
-        case .JAL:
-          sim.registers[.RA] = cast(Number) target_jump_addr
-          target_jump_addr = cast(Address) oper.(Number)
-        case .JALR:
-          sim.registers[.RA] = cast(Number) target_jump_addr
-          target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
-        case .RET:
-          target_jump_addr = cast(Address) sim.registers[.RA]
-        }
-
-        target_jump_idx := instruction_index_from_address(target_jump_addr)
-        sim.next_instruction_idx = target_jump_idx
+      case .J:
+        target_jump_addr = cast(Address) oper.(Number)
+      case .JR:
+        target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
+      case .JAL:
+        sim.registers[.RA] = cast(Number) target_jump_addr
+        target_jump_addr = cast(Address) oper.(Number)
+      case .JALR:
+        sim.registers[.RA] = cast(Number) target_jump_addr
+        target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
+      case .RET:
+        target_jump_addr = cast(Address) sim.registers[.RA]
       }
+
+      target_jump_idx := instruction_index_from_address(target_jump_addr)
+      sim.next_instruction_idx = target_jump_idx
     case .LB: fallthrough
     case .LH: fallthrough
     case .LW:
-      dest, err0 := operand_from_operands(operands[:], 0)
-      src, err1  := operand_from_operands(operands[:], 1)
-      off, err2  := operand_from_operands(operands[:], 2)
+      dest, _ := operand_from_operands(operands[:], 0)
+      src, _ := operand_from_operands(operands[:], 1)
+      off, _ := operand_from_operands(operands[:], 2)
 
-      error = err0 || err1 || err2
-      if !error
+      src_addr: Address
+      if off != nil
       {
-        src_addr: Address
-        if off != nil
-        {
-          src_addr = cast(Address) off.(Number)
-        }
-        else
-        {
-          src_addr = 0
-        }
-
-        switch v in src
-        {
-        case Number:     src_addr += cast(Address) v
-        case RegisterID: src_addr += cast(Address) sim.registers[v]
-        }
-
-        @(static)
-        sizes := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
-
-        type := opcode.opcode_type
-        bytes := memory_load_bytes(src_addr, sizes[type])
-        value := value_from_bytes(bytes)
-        sim.registers[dest.(RegisterID)] = value
+        src_addr = cast(Address) off.(Number)
       }
+      else
+      {
+        src_addr = 0
+      }
+
+      switch v in src
+      {
+      case Number:     src_addr += cast(Address) v
+      case RegisterID: src_addr += cast(Address) sim.registers[v]
+      }
+
+      @(static)
+      sizes := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
+
+      type := opcode.opcode_type
+      bytes := memory_load_bytes(src_addr, sizes[type])
+      value := value_from_bytes(bytes)
+      sim.registers[dest.(RegisterID)] = value
     case .SB: fallthrough
     case .SH: fallthrough
     case .SW:
-      src, err0  := operand_from_operands(operands[:], 0)
-      dest, err1 := operand_from_operands(operands[:], 1)
-      off, err2  := operand_from_operands(operands[:], 2)
+      src, _ := operand_from_operands(operands[:], 0)
+      dest, _ := operand_from_operands(operands[:], 1)
+      off, _ := operand_from_operands(operands[:], 2)
 
-      error = err0 || err1 || err2
-      if !error
+      dest_address := cast(Address) off.(Number)
+      switch v in dest
       {
-        dest_address := cast(Address) off.(Number)
-        switch v in dest
-        {
-        case Number:     dest_address += cast(Address) v
-        case RegisterID: dest_address += cast(Address) sim.registers[v]
-        }
-
-        @(static)
-        sizes := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
-        
-        type := opcode.opcode_type
-        value := sim.registers[src.(RegisterID)]
-        bytes := bytes_from_value(value, sizes[type], context.temp_allocator)
-        memory_store_bytes(dest_address, bytes)
+      case Number:     dest_address += cast(Address) v
+      case RegisterID: dest_address += cast(Address) sim.registers[v]
       }
-    }
 
-    if error
-    {
-      term.color(.RED)
-      fmt.eprintf("[ERROR]: Failed to execute instruction on line %i.\n", 
-                  instruction.line_idx+1)
-      term.color(.WHITE)
-      return
+      @(static)
+      sizes := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
+      
+      type := opcode.opcode_type
+      value := sim.registers[src.(RegisterID)]
+      bytes := bytes_from_value(value, sizes[type], context.temp_allocator)
+      memory_store_bytes(dest_address, bytes)
     }
 
     tui_print_sim_result(instruction, sim.next_instruction_idx)
