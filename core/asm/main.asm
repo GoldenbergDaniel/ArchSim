@@ -10,7 +10,7 @@
 
 
 // Add a0 to s1
-PROC:       add  s1, a0
+PROC:       add  s1, s1, a0
             ret
 
 

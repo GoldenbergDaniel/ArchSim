@@ -9,6 +9,7 @@ Token :: struct
   data: string,
   type: TokenType,
   opcode_type: OpcodeType,
+  register_id: RegisterID,
 
   line: int,
   column: int,
@@ -19,9 +20,10 @@ TokenType :: enum
   NIL,
 
   OPCODE,
-  NUMBER,
-  IDENTIFIER,
+  REGISTER,
+  LABEL,
   DIRECTIVE,
+  NUMBER,
   COLON,
   EQUALS,
 }
@@ -183,9 +185,25 @@ tokenize_source_code :: proc(src_data: []byte)
           continue tokenizer_loop
         }
 
-        // Tokenize identifier
+        // Tokenize register
         {
-          line.tokens[token_cnt] = Token{data=tok_str, type=.IDENTIFIER}
+          register_id, ok := register_from_string(tok_str)
+          if ok
+          {
+            line.tokens[token_cnt] = Token{
+              data = tok_str, 
+              type = .REGISTER, 
+              register_id = register_id
+            }
+            
+            token_cnt += 1
+            continue tokenizer_loop
+          }
+        }
+
+        // Tokenize label
+        {
+          line.tokens[token_cnt] = Token{data=tok_str, type=.LABEL}
           token_cnt += 1
           continue tokenizer_loop
         }
@@ -205,53 +223,206 @@ tokenize_source_code :: proc(src_data: []byte)
   }
 }
 
-error_check_instructions :: proc()
+syntax_check_lines :: proc() -> bool
 {
-  // Syntax ----------------
-  for instruction_idx := 0; instruction_idx < sim.instruction_count; instruction_idx += 1
+  for line_idx := 0; line_idx < sim.line_count; line_idx += 1
   {
     error: ParserError
-    instruction := sim.instructions[instruction_idx]
+    line := sim.lines[line_idx]
 
-    if instruction.tokens[0].line >= sim.text_section_pos && 
-        instruction.tokens[0].type == .IDENTIFIER && 
-        instruction.tokens[0].opcode_type == .NIL &&
-        instruction.tokens[1].type == .OPCODE
+    if line.tokens == nil do continue
+
+    if line.tokens[0].type == .LABEL &&
+       line.tokens[1].type == .OPCODE
     {
       error = SyntaxError{
         type = .MISSING_COLON,
-        line = instruction.tokens[0].line
+        line = line.tokens[0].line
       }
-
-      break
     }
 
-    if resolve_parser_error(error) do return
+    if resolve_parser_error(error, line_idx) do return false
   }
 
-  // Semantics ----------------
+  return true
+}
+
+semantics_check_instructions :: proc() -> (ok: bool)
+{
+  ok = true
+
   for instruction_idx := 0; instruction_idx < sim.instruction_count; instruction_idx += 1
   {
-    error: ParserError
     instruction := sim.instructions[instruction_idx]
+    error: ParserError
 
-    if instruction_idx >= sim.text_section_pos
+    // Fetch opcode and operands ----------------
+    opcode: Token
+    operands: [3]Token
+    operand_cnt: int
     {
-      if instruction.tokens[0].opcode_type == .NIL && 
-          instruction.tokens[2].opcode_type == .NIL
+      opcode_pos := opcode_pos_in_instruction(instruction)
+      if opcode_pos == 0
       {
-        error = TypeError{
-          line = instruction.tokens[0].line,
-          column = instruction.tokens[0].column,
-          token = instruction.tokens[0],
-          expected_type = .OPCODE,
-          actual_type = instruction.tokens[0].type
+        opcode = instruction.tokens[0]
+        operands[0] = instruction.tokens[1]
+        operands[1] = instruction.tokens[2]
+        operands[2] = instruction.tokens[3]
+
+        for operand, idx in instruction.tokens do if idx > 0
+        {
+          if operand.type != .NIL
+          {
+            operand_cnt += 1
+          }
+        }
+      }
+      else if opcode_pos == 2
+      {
+        opcode = instruction.tokens[2]
+        operands[0] = instruction.tokens[3]
+        operands[1] = instruction.tokens[4]
+        operands[2] = instruction.tokens[5]
+
+        for operand, idx in instruction.tokens do if idx > 2
+        {
+          if operand.type != .NIL
+          {
+            operand_cnt += 1
+          }
         }
       }
     }
 
-    if resolve_parser_error(error) do return
+    for error == nil
+    {
+      #partial switch opcode.opcode_type
+      {
+      case .MV:
+        if operand_cnt != 2
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 2,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+      case .LI:
+        if operand_cnt != 2
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 2,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .NUMBER
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+      case .ADD: fallthrough
+      case .SUB: fallthrough
+      case .AND: fallthrough
+      case .OR:  fallthrough
+      case .XOR: fallthrough
+      case .SLL: fallthrough
+      case .SRL: fallthrough
+      case .SRA:
+        if operand_cnt != 3
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 3,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+
+        if operands[2].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[2].type
+          }
+
+          break
+        }
+      }
+
+      if error == nil do break
+    }
+
+    if resolve_parser_error(error, instruction.line_idx)
+    {
+      ok = false
+    }
   }
+
+  return ok
 }
 
 next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
@@ -287,23 +458,22 @@ print_tokens :: proc()
   fmt.print("\n")
 }
 
-print_tokens_at :: proc(line_num: int)
+print_tokens_at :: proc(idx: int)
 {
-  for tok in sim.lines[line_num].tokens
+  for tok in sim.lines[idx].tokens do if tok.type != .NIL
   {
-    if tok.type == .NIL do continue
-    fmt.print("{", tok.data, "|", tok.type , "}", "")
+    fmt.print("{", tok.data, "|", tok.type, "|", tok.opcode_type, "}", "")
   }
   
   fmt.print("\n")
 }
 
-register_from_token :: proc(token: Token) -> (RegisterID, bool)
+register_from_string :: proc(str: string) -> (RegisterID, bool)
 {
   result: RegisterID
-  err: bool
+  ok := true
 
-  switch token.data
+  switch str
   {
   case "x0", "zero": result = .ZR
   case "x1", "ra":   result = .RA
@@ -337,10 +507,26 @@ register_from_token :: proc(token: Token) -> (RegisterID, bool)
   case "x29", "t4":  result = .T4
   case "x30", "t5":  result = .T5
   case "x31", "t6":  result = .T6
-  case: err = true
+  case: ok = false
   }
 
-  return result, err
+  return result, ok
+}
+
+opcode_pos_in_instruction :: proc(instruction: Line) -> int
+{
+  result: int
+
+  if instruction.tokens[0].opcode_type != .NIL
+  {
+    result = 0
+  }
+  else if instruction.tokens[2].opcode_type != .NIL
+  {
+    result = 2
+  }
+
+  return result
 }
 
 operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
@@ -354,15 +540,15 @@ operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
   {
     result = cast(Number) str_to_int(token.data)
   }
-  else if token.type == .IDENTIFIER
+  else if token.type == .REGISTER
   {
-    result, err = register_from_token(token)
-    if err
-    {
-      ok: bool
-      result, ok = sim.symbol_table[token.data]
-      err = !ok
-    }
+    result = token.register_id
+  }
+  else if token.type == .LABEL
+  {
+    ok: bool
+    result, ok = sim.symbol_table[token.data]
+    err = !ok
   }
 
   return result, err
@@ -373,7 +559,7 @@ line_is_instruction :: proc(line: Line) -> bool
   if line.tokens == nil do return false
   if len(line.tokens) == 0 do return false
   if !(line.tokens[0].type == .OPCODE) &&
-     !(line.tokens[0].type == .IDENTIFIER && line.tokens[2].type == .OPCODE)
+     !(line.tokens[0].type == .LABEL && line.tokens[2].type == .OPCODE)
   {
     return false
   }
@@ -392,10 +578,11 @@ ParserError :: union
 
 SyntaxError :: struct
 {
-  type: SyntaxErrorType,
   line: int,
   column: int,
   token: Token,
+
+  type: SyntaxErrorType,
 }
 
 SyntaxErrorType :: enum
@@ -410,9 +597,10 @@ TypeError :: struct
 {
   line: int,
   column: int,
+  token: Token,
+
   expected_type: TokenType,
   actual_type: TokenType,
-  token: Token,
 }
 
 OpcodeError :: struct
@@ -420,14 +608,23 @@ OpcodeError :: struct
   line: int,
   column: int,
   token: Token,
+
+  type: OpcodeErrorType,
+  expected_operand_cnt: int,
+  actual_operand_cnt: int,
 }
 
-resolve_parser_error :: proc(error: ParserError) -> bool
+OpcodeErrorType :: enum
+{
+  INVALID_OPERAND_COUNT,
+}
+
+resolve_parser_error :: proc(error: ParserError, line_idx: int) -> bool
 {
   if error == nil do return false
-  
+
   term.color(.RED)
-  fmt.print("[PARSER ERROR]: ")
+  fmt.printf("Error on line %i: ", line_idx + 1)
 
   switch v in error
   {
@@ -435,7 +632,7 @@ resolve_parser_error :: proc(error: ParserError) -> bool
     switch v.type
     {
     case .MISSING_COLON: 
-      fmt.printf("Missing colon after label on line %i.\n", v.line)
+      fmt.printf("Missing colon after label.\n", v.line)
     case .MISSING_IDENTIFIER: 
       fmt.printf("")
     case .MISSING_LITERAL: 
@@ -444,11 +641,18 @@ resolve_parser_error :: proc(error: ParserError) -> bool
       fmt.printf("")
     }
   case TypeError:
-    fmt.printf("Type mismatch on line %i. Expected \'%s\', got \'%s\'.\n", 
-                v.line, 
+    fmt.printf("Type mismatch. Expected \'%s\', got \'%s\'.\n", 
                 v.expected_type, 
                 v.actual_type)
   case OpcodeError:
+    switch v.type
+    {
+    case .INVALID_OPERAND_COUNT:
+      fmt.printf("Invalid operand count. \'%s\' expects %i, got %i.\n",
+                 v.token.opcode_type,
+                 v.expected_operand_cnt,
+                 v.actual_operand_cnt)
+    }
   }
 
   term.color(.WHITE)

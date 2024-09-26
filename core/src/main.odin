@@ -172,7 +172,7 @@ main :: proc()
   temp_arena_allocator := virtual.arena_allocator(&sim.temp_arena)
   context.temp_allocator = temp_arena_allocator
 
-  tui_print_welcome()
+  // tui_print_welcome()
 
   src_file_path := "res/main.asm"
   if len(os.args) > 1
@@ -257,7 +257,7 @@ main :: proc()
       }
 
       // Labels
-      if line.tokens[0].type == .IDENTIFIER && line.tokens[1].type == .COLON
+      if line.tokens[0].type == .LABEL && line.tokens[1].type == .COLON
       {
         address := address_from_line_index(line_idx)
         sim.symbol_table[line.tokens[0].data] = cast(Number) address
@@ -265,7 +265,8 @@ main :: proc()
     }
   }
 
-  // fmt.println("text pos:", sim.text_section_pos)
+  syntax_ok := syntax_check_lines()
+  if !syntax_ok do return
 
   // Instructions from lines ----------------
   for line in sim.lines do if line_is_instruction(line)
@@ -274,8 +275,10 @@ main :: proc()
     sim.instruction_count += 1
   }
 
-  // Error check ----------------
-  error_check_instructions()
+  semantics_ok := semantics_check_instructions()
+  if !semantics_ok do return
+
+  if true do return
 
   // Execute ----------------
   for sim.program_counter < sim.instruction_count

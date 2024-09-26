@@ -195,15 +195,15 @@ tui_prompt_command :: proc() -> bool
       }
       else 
       {
-        reg, err := register_from_token(Token{data=command.args[1]})
-        if !err
+        reg, ok1 := register_from_string(command.args[1])
+        if ok1
         {
           address = cast(Address) sim.registers[reg]
         }
         else
         {
-          val, ok := sim.symbol_table[command.args[1]]
-          if !ok
+          val, ok2 := sim.symbol_table[command.args[1]]
+          if !ok2
           {
             tui_print_message(.ERROR, "Unidentified token for address.")
             done = false
