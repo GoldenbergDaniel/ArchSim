@@ -186,9 +186,9 @@ main :: proc()
   temp_arena_allocator := virtual.arena_allocator(&sim.temp_arena)
   context.temp_allocator = temp_arena_allocator
 
-  // tui_print_welcome()
+  tui_print_welcome()
 
-  src_file_path := "main/main.asm"
+  src_file_path := "asm/main.asm"
   if len(os.args) > 1
   {
     src_file_path = os.args[1]
@@ -291,8 +291,6 @@ main :: proc()
 
   semantics_ok := semantics_check_instructions()
   if !semantics_ok do return
-
-  if true do return
 
   // Execute ----------------
   for sim.program_counter < sim.instruction_count
