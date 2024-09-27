@@ -24,7 +24,7 @@ Simulator :: struct
 
   lines: []Line,
   line_count: int,
-  instructions: []Line,
+  instructions: []^Line,
   instruction_count: int,
   next_instruction_idx: int,
   symbol_table: map[string]Number,
@@ -208,14 +208,12 @@ main :: proc()
   os.close(src_file)
 
   sim.lines = make([]Line, MAX_LINES)
-  sim.instructions = make([]Line, MAX_LINES)
+  sim.instructions = make([]^Line, MAX_LINES)
   sim.memory = make([]byte, MEMORY_SIZE)
   sim.step_to_next = true
 
   // Tokenize ----------------
   tokenize_source_code(src_data)
-  // print_tokens()
-  // if true do return
 
   // Preprocess ----------------
   {
@@ -262,15 +260,9 @@ main :: proc()
           
           sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += 4
-        case ".section":
-          if line.tokens[1].data == ".text"
-          {
-            sim.text_section_pos = line_idx + 1
-          }
         }
       }
 
-      // Labels
       if line.tokens[0].type == .LABEL && line.tokens[1].type == .COLON
       {
         address := address_from_line_index(line_idx)
@@ -283,9 +275,9 @@ main :: proc()
   if !syntax_ok do return
 
   // Instructions from lines ----------------
-  for line in sim.lines do if line_is_instruction(line)
+  for &line in sim.lines do if line_is_instruction(line)
   {
-    sim.instructions[sim.instruction_count] = line
+    sim.instructions[sim.instruction_count] = &line
     sim.instruction_count += 1
   }
 
@@ -539,7 +531,7 @@ main :: proc()
       memory_store_bytes(dest_address, bytes)
     }
 
-    tui_print_sim_result(instruction, sim.next_instruction_idx)
+    tui_print_sim_result(instruction^, sim.next_instruction_idx)
     sim.program_counter = sim.next_instruction_idx
 
     if !(sim.step_to_next && sim.program_counter < sim.line_count - 1)

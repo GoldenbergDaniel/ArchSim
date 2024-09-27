@@ -261,7 +261,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
     operands: [3]Token
     operand_cnt: int
     {
-      opcode_pos := opcode_pos_in_instruction(instruction)
+      opcode_pos := opcode_pos_in_instruction(instruction^)
       if opcode_pos == 0
       {
         opcode = instruction.tokens[0]

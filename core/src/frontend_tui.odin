@@ -106,7 +106,7 @@ tui_prompt_command :: proc() -> bool
     {
       line_idx = str_to_int(command.args[0]) - 1
       
-      if sim.instructions[line_idx].has_breakpoint
+      if sim.lines[line_idx].has_breakpoint
       {
         term.color(.GRAY)
         fmt.printf("Breakpoint at line %i.\n", line_idx + 1)
@@ -124,27 +124,27 @@ tui_prompt_command :: proc() -> bool
       switch modifier
       {
       case "set":
-        if sim.instructions[line_idx].has_breakpoint == false
+        if sim.lines[line_idx].has_breakpoint == false
         {
-          sim.instructions[line_idx].has_breakpoint = true
+          sim.lines[line_idx].has_breakpoint = true
 
           term.color(.GREEN)
           fmt.printf("Breakpoint set at line %i.\n", line_idx + 1)
           term.color(.WHITE)
         }
       case "rem":
-        if sim.instructions[line_idx].has_breakpoint == true
+        if sim.lines[line_idx].has_breakpoint == true
         {
-          sim.instructions[line_idx].has_breakpoint = false
+          sim.lines[line_idx].has_breakpoint = false
 
           term.color(.ORANGE)
           fmt.printf("Breakpoint removed at line %i.\n", line_idx + 1)
           term.color(.WHITE)
         }
       case "clear":
-        for i in 0..<MAX_LINES
+        for &line in sim.lines
         {
-          sim.instructions[i].has_breakpoint = false
+          line.has_breakpoint = false
         }
 
         term.color(.ORANGE)
@@ -155,12 +155,9 @@ tui_prompt_command :: proc() -> bool
         fmt.print("Breakpoints:\n")
         term.color(.WHITE)
 
-        for i in 0..<MAX_LINES
+        for line in sim.lines do if line.has_breakpoint
         {
-          if sim.instructions[i].has_breakpoint == true
-          {
-            fmt.printf(" %i\n", i)
-          }
+          fmt.printf(" %i\n", line.line_idx + 1)
         }
       }
     }

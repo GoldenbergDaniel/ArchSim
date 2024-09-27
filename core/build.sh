@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SOURCE="src"
-OUTPUT="out/archsim"
+OUTPUT="archsim"
 
 MODE="dev"
 if [[ $1 == "d" ]]; then MODE="debug"; fi
@@ -15,9 +15,9 @@ if [[ $MODE == "dev" ]];     then FLAGS="-o:none -use-separate-modules"; fi
 if [[ $MODE == "debug" ]];   then FLAGS="-o:none -debug"; fi
 if [[ $MODE == "release" ]]; then FLAGS="-o:speed -vet -no-bounds-check -no-type-assert"; fi
 
-echo [package:$SOURCE]
+echo [package:$OUTPUT]
 echo [target:$TARGET]
 echo [mode:$MODE]
 
 if [[ ! -d "out" ]]; then mkdir out; fi
-odin build $SOURCE -out:$OUTPUT -target:$TARGET $FLAGS
+odin build $SOURCE -out:out/$OUTPUT -target:$TARGET $FLAGS
