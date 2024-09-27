@@ -296,8 +296,22 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
     for error == nil
     {
-      #partial switch opcode.opcode_type
+      switch opcode.opcode_type
       {
+      case .NIL:
+      case .NOP: fallthrough
+      case .RET:
+        if operand_cnt != 0
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 0,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
       case .MV:
         if operand_cnt != 2
         {
@@ -330,7 +344,9 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
           break
         }
-      case .LI:
+      case .LI:  fallthrough
+      case .LUI: fallthrough
+      case .AUIPC:
         if operand_cnt != 2
         {
           error = OpcodeError{
@@ -406,6 +422,257 @@ semantics_check_instructions :: proc() -> (ok: bool)
         {
           error = TypeError{
             expected_type = .REGISTER,
+            actual_type = operands[2].type
+          }
+
+          break
+        }
+      case .NOT: fallthrough
+      case .NEG:
+        if operand_cnt != 1
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 1,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+      case .ADDI: fallthrough
+      case .ANDI: fallthrough
+      case .ORI:  fallthrough
+      case .XORI: fallthrough
+      case .SLLI: fallthrough
+      case .SRLI: fallthrough
+      case .SRAI:
+        if operand_cnt != 3
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 3,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+
+        if operands[2].type != .NUMBER
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
+            actual_type = operands[2].type
+          }
+
+          break
+        }
+      case .J:  fallthrough
+      case .JAL:
+        if operand_cnt != 1
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 1,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .LABEL && operands[0].type != .NUMBER
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+      case .JR: fallthrough
+      case .JALR:
+        if operand_cnt != 1
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 1,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+      case .BEQ: fallthrough
+      case. BNE: fallthrough
+      case. BLT: fallthrough
+      case .BGT: fallthrough
+      case .BLE: fallthrough
+      case .BGE:
+        if operand_cnt != 3
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 3,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+
+        if operands[2].type != .NUMBER && operands[2].type != .LABEL
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
+            actual_type = operands[2].type
+          }
+
+          break
+        }
+      case .BEQZ: fallthrough
+      case .BNEZ: fallthrough
+      case .BLTZ: fallthrough
+      case .BGTZ: fallthrough
+      case .BLEZ: fallthrough
+      case .BGEZ:
+        if operand_cnt != 2
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 2,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .NUMBER && operands[2].type != .LABEL
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+      case .LB: fallthrough
+      case .LH: fallthrough
+      case .LW: fallthrough
+      case .SB: fallthrough
+      case .SH: fallthrough
+      case .SW:
+        if operand_cnt != 2 && operand_cnt != 3
+        {
+          error = OpcodeError{
+            token = opcode,
+            type = .INVALID_OPERAND_COUNT,
+            expected_operand_cnt = 2,
+            actual_operand_cnt = operand_cnt,
+          }
+
+          break
+        }
+
+        if operands[0].type != .REGISTER
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[0].type
+          }
+
+          break
+        }
+
+        if operands[1].type != .REGISTER && operands[1].type != .LABEL
+        {
+          error = TypeError{
+            expected_type = .REGISTER,
+            actual_type = operands[1].type
+          }
+
+          break
+        }
+
+        if operands[2].type != .NIL && 
+           operands[2].type != .NUMBER && 
+           operands[2].type != .LABEL
+        {
+          error = TypeError{
+            expected_type = .NUMBER,
             actual_type = operands[2].type
           }
 

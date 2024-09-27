@@ -50,15 +50,22 @@ OpcodeType :: enum
   LI,
   
   ADD,
+  ADDI,
   SUB,
   AND,
+  ANDI,
   OR,
+  ORI,
   XOR,
+  XORI,
   NOT,
   NEG,
   SLL,
+  SLLI,
   SRL,
+  SRLI,
   SRA,
+  SRAI,
 
   J,
   JR,
@@ -113,15 +120,22 @@ opcode_table: map[string]OpcodeType = {
   "li"    = .LI,
 
   "add"   = .ADD,
+  "addi"  = .ADDI,
   "sub"   = .SUB,
   "and"   = .AND,
+  "andi"  = .ANDI,
   "or"    = .OR,
+  "ori"   = .ORI,
   "xor"   = .XOR,
+  "xori"  = .XORI,
   "not"   = .NOT,
   "neg"   = .NEG,
   "sll"   = .SLL,
+  "slli"  = .SLLI,
   "srl"   = .SRL,
+  "srli"  = .SRLI,
   "sra"   = .SRA,
+  "srai"  = .SRAI,
 
   "j"     = .J,
   "jr"    = .JR,
@@ -174,7 +188,7 @@ main :: proc()
 
   // tui_print_welcome()
 
-  src_file_path := "res/main.asm"
+  src_file_path := "main/main.asm"
   if len(os.args) > 1
   {
     src_file_path = os.args[1]
@@ -184,7 +198,7 @@ main :: proc()
   if err != 0
   {
     term.color(.RED)
-    fmt.eprintf("Error opening file \"%s\"\n", src_file_path)
+    fmt.eprintf("Error: File \'%s\' not found.\n", src_file_path)
     return
   }
 
@@ -341,17 +355,24 @@ main :: proc()
       case .LI:
         sim.registers[dest_reg.(RegisterID)] = op1_reg.(Number)
     }
-    case .ADD: fallthrough
-    case .SUB: fallthrough
-    case .AND: fallthrough
-    case .OR:  fallthrough
-    case .XOR: fallthrough
-    case .NOT: fallthrough
-    case .NEG: fallthrough
-    case .SLL: fallthrough
-    case .SRL: fallthrough
-    case .SRA: fallthrough
-    case .LUI: fallthrough
+    case .ADD:  fallthrough
+    case .ADDI: fallthrough
+    case .SUB:  fallthrough
+    case .AND:  fallthrough
+    case .ANDI: fallthrough
+    case .OR:   fallthrough
+    case .ORI:  fallthrough
+    case .XOR:  fallthrough
+    case .XORI: fallthrough
+    case .NOT:  fallthrough
+    case .NEG:  fallthrough
+    case .SLL:  fallthrough
+    case .SLLI: fallthrough
+    case .SRL:  fallthrough
+    case .SRLI: fallthrough
+    case .SRA:  fallthrough
+    case .SRAI: fallthrough
+    case .LUI:  fallthrough
     case .AUIPC:
       dest_reg, _ := operand_from_operands(operands[:], 0)
       op1_reg, _ := operand_from_operands(operands[:], 1)
@@ -374,18 +395,18 @@ main :: proc()
       result: Number
       #partial switch instruction.tokens[0].opcode_type
       {
-      case .ADD:   result = val1 + val2
-      case .SUB:   result = val1 - val2
-      case .AND:   result = val1 & val2
-      case .OR:    result = val1 | val2
-      case .XOR:   result = val1 | val2
-      case .NOT:   result = ~val1
-      case .NEG:   result = -result
-      case .SLL:   result = val1 << uint(val2)
-      case .SRL:   result = val1 >> uint(val2)
-      case .SRA:   result = arithmetic_shift_right(val1, uint(val2))
-      case .LUI:   result = val1 << 12
-      case .AUIPC: result = Number(sim.program_counter) + val1 << 12
+      case .ADD, .ADDI: result = val1 + val2
+      case .SUB:        result = val1 - val2
+      case .AND, .ANDI: result = val1 & val2
+      case .OR,  .ORI:  result = val1 | val2
+      case .XOR:        result = val1 | val2
+      case .NOT:        result = ~val1
+      case .NEG:        result = -result
+      case .SLL, .SLLI: result = val1 << uint(val2)
+      case .SRL, .SRLI: result = val1 >> uint(val2)
+      case .SRA, .SRAI: result = arithmetic_shift_right(val1, uint(val2))
+      case .LUI:        result = val1 << 12
+      case .AUIPC:      result = Number(sim.program_counter) + val1 << 12
 
       sim.registers[dest_reg.(RegisterID)] = result
     }
