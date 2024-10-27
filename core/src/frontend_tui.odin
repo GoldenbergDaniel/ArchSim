@@ -7,11 +7,11 @@ import "term"
 
 TUI_Command :: struct
 {
-  type: TUI_CommandType,
+  type: TUI_Command_Type,
   args: [3]string,
 }
 
-TUI_CommandType :: enum
+TUI_Command_Type :: enum
 {
   NONE,
 
@@ -23,15 +23,13 @@ TUI_CommandType :: enum
   VIEW,
 }
 
-TUI_RegisterViewType :: enum
+TUI_Register_Group :: enum
 {
   TEMPORARIES,
   SAVED,
   ARGUMENTS,
   EXTRAS,
 }
-
-TUI_RegisterViewSet :: bit_set[TUI_RegisterViewType]
 
 TUI_Base :: enum
 {
@@ -46,20 +44,20 @@ TUI_Config :: struct
 }
 
 @(private="file")
-command_table: map[string]TUI_CommandType = {
-  "q"     = .QUIT,
-  "quit"  = .QUIT,
-  "h"     = .HELP,
-  "help"  = .HELP,
-  "r"     = .CONTINUE,
-  "run"   = .CONTINUE,
-  ""      = .STEP,
-  "s"     = .STEP,
-  "step"  = .STEP,
-  "b"     = .BREAKPOINT,
-  "break" = .BREAKPOINT,
-  "v"     = .VIEW,
-  "view"  = .VIEW,
+command_table: map[string]TUI_Command_Type = {
+  "q"        = .QUIT,
+  "quit"     = .QUIT,
+  "h"        = .HELP,
+  "help"     = .HELP,
+  "c"        = .CONTINUE,
+  "continue" = .CONTINUE,
+  ""         = .STEP,
+  "s"        = .STEP,
+  "step"     = .STEP,
+  "b"        = .BREAKPOINT,
+  "break"    = .BREAKPOINT,
+  "v"        = .VIEW,
+  "view"     = .VIEW,
 }
 
 @(private="file")
@@ -71,7 +69,7 @@ tui_prompt_command :: proc() -> bool
 
   buf: [64]byte
   term.color(.GRAY)
-  fmt.print("\n(archsim) ")
+  fmt.print("\n(riscbox) ")
   term.color(.WHITE)
 
   input_len, _ := os.read(os.stdin, buf[:])
@@ -166,7 +164,7 @@ tui_prompt_command :: proc() -> bool
   case .VIEW:
     if command.args[0] == "r" || command.args[0] == "reg"
     {
-      set: TUI_RegisterViewSet
+      set: bit_set[TUI_Register_Group]
       switch command.args[1]
       {
       case "":                     set = {.TEMPORARIES, .SAVED, .ARGUMENTS}
@@ -281,10 +279,17 @@ tui_command_from_string :: proc(str: string) -> TUI_Command
 
 tui_print_welcome :: proc()
 {
+  term.color(.BLUE)
+  term.style({.BOLD})
+  fmt.print("RISC")
+  term.color(.YELLOW)
+  term.style({.BOLD})
+  fmt.print("BOX\n")
+  term.style({.NONE})
   term.color(.GRAY)
-  fmt.print("======= ARCH SIM =======\n")
-  fmt.print("Type [r] to run program or [s] to step to next instruction.\n")
-  fmt.print("Type [h] for a list of commands.\n")
+  fmt.print("Welcome RISCBOX, a RISC-V simulation sandbox.\n")
+  fmt.print("Type 'r' + 'path/to/assembly' to start.\n")
+  fmt.print("Type 'h' for a list of commands.\n")
   term.color(.WHITE)
 }
 
@@ -313,7 +318,7 @@ tui_print_sim_result :: proc(instruction: Line, next_idx: int)
   fmt.printf("%#X\n", address_from_instruction_index(next_idx))
 
   print_register_title := true
-  for reg in RegisterID
+  for reg in Register_ID
   {
     if sim.registers[reg] != sim.registers_prev[reg]
     {
@@ -332,17 +337,17 @@ tui_print_sim_result :: proc(instruction: Line, next_idx: int)
   }
 }
 
-tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)
+tui_print_register_view :: proc(which: bit_set[TUI_Register_Group], base: TUI_Base)
 {
   base := base
   base = .DEC
 
-  // Print temporaries ----------------
+  // --- Print temporaries ---------------
   if .TEMPORARIES in which
   {
     fmt.print("[temporaries]\n")
 
-    for reg in RegisterID
+    for reg in Register_ID
     {
       if (reg >= .T0 && reg <= .T2) || (reg >= .T3 && reg <= .T6)
       {
@@ -359,12 +364,12 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)
     }
   }
 
-  // Print saved ----------------
+  // --- Print saved ---------------
   if .SAVED in which
   {
     fmt.print("[saved]\n")
 
-    for reg in RegisterID
+    for reg in Register_ID
     {
       if reg == .S1 || (reg >= .S2 && reg <= .S11)
       {
@@ -381,12 +386,12 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)
     }
   }
 
-  // Print arguments ----------------
+  // --- Print arguments ---------------
   if .ARGUMENTS in which
   {
     fmt.print("[arguments]\n")
 
-    for reg in RegisterID
+    for reg in Register_ID
     {
       if reg >= .A0 && reg <= .A7
       {
@@ -403,12 +408,12 @@ tui_print_register_view :: proc(which: TUI_RegisterViewSet, base: TUI_Base)
     }
   }
 
-  // Print extras ----------------
+  // --- Print extras ---------------
   if .EXTRAS in which
   {
     fmt.print("[extras]\n")
 
-    for reg in RegisterID
+    for reg in Register_ID
     {
       if (reg >= .RA && reg <= .TP) || reg == .FP
       {
@@ -456,28 +461,29 @@ tui_print_memory_view :: proc(address: Address, base: TUI_Base)
 
 tui_print_commands_list :: proc()
 {
-  fmt.print(" q, quit       |   quit simulator\n")
-  fmt.print(" s, step       |   step to next instruction\n")
-  fmt.print(" r, run        |   continue to next breakpoint\n")
-  fmt.print(" b, break      |   breakpoints\n")
-  fmt.print("  'X'          |   peak breakpoint at 'X'\n")
-  fmt.print("  set 'X'      |   set breakpoint at 'X'\n")
-  fmt.print("  rem 'X'      |   remove breakpoint at 'X'\n")
-  fmt.print("  clear        |   clear breakpoints\n")
-  fmt.print("  list         |   list breakpoints\n")
-  fmt.print(" v, view       |   view simulator contents\n")
-  fmt.print("  r, reg 'G'   |   view registers of group 'G'\n")
-  fmt.print("  m, mem 'A'   |   view memory around address 'A'\n")
+  fmt.print(" r, run 'path'   |   Use assembly file from path.\n")
+  fmt.print(" c, continue     |   Continue to next breakpoint.\n")
+  fmt.print(" s, step         |   Step to next instruction.\n")
+  fmt.print(" b, break        |   \n")
+  fmt.print("  'X'            |   Peak breakpoint at line.\n")
+  fmt.print("  set 'X'        |   Set breakpoint at line.\n")
+  fmt.print("  rem 'X'        |   Remove breakpoint at line.\n")
+  fmt.print("  clear          |   Remove all breakpoints.\n")
+  fmt.print("  list           |   List all breakpoints.\n")
+  fmt.print(" v, view         |   \n")
+  fmt.print("  r, reg 'G'     |   View registers of group.\n")
+  fmt.print("  m, mem 'A'     |   View memory at address.\n")
+  fmt.print(" q, quit         |   Quit simulator.\n")
 }
 
-TUI_MessageLevel :: enum
+TUI_Message_Level :: enum
 {
   INFO,
   WARNING,
   ERROR,
 }
 
-tui_print_message :: proc(level: TUI_MessageLevel, msg: string, args: ..any)
+tui_print_message :: proc(level: TUI_Message_Level, msg: string, args: ..any)
 {
   switch level
   {

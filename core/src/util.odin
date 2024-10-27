@@ -1,13 +1,12 @@
 package main
 
-import "core:mem"
 import "core:math"
 
-Allocator :: mem.Allocator
+import "src:basic/mem"
 
-str_to_lower :: proc(str: string, allocator: Allocator) -> string
+str_to_lower :: proc(str: string, arena: ^mem.Arena) -> string
 {
-  result := make([]byte, len(str), allocator)
+  result := make([]byte, len(str), mem.allocator(arena))
   
   for i in 0..<len(str)
   {

@@ -1,5 +1,5 @@
 # ArchSim
-Simulate RISC-V from the command line and browser. Project is still early in development.
+Simulate RISC-V from the command line and browser. Project is still in development.
 
 <img src="demo.png" alt="ArchSim Demo" width="350"/>
 

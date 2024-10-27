@@ -2,20 +2,20 @@ package main
 
 import "core:fmt"
 
-import "term"
+import "src:basic/mem"
+import "src:term"
 
 Token :: struct
 {
   data: string,
-  type: TokenType,
-  opcode_type: OpcodeType,
-  register_id: RegisterID,
-
+  type: Token_Type,
+  opcode_type: Opcode_Type,
+  register_id: Register_ID,
   line: int,
   column: int,
 }
 
-TokenType :: enum
+Token_Type :: enum
 {
   NIL,
 
@@ -37,11 +37,12 @@ Line :: struct
 
 tokenize_source_code :: proc(src_data: []byte)
 {
+  scratch := mem.begin_temp()
+  defer mem.end_temp(scratch)
+
   line_start, line_end: int
   for line_idx := 0; line_end < len(src_data); line_idx += 1
   {
-    defer free_all(context.temp_allocator)
-
     line_end = next_line_from_bytes(src_data, line_start)
     if line_start == line_end
     {
@@ -52,7 +53,7 @@ tokenize_source_code :: proc(src_data: []byte)
       else do continue
     }
 
-    // Skip lines containing only whitespace
+    // --- Skip lines containing only whitespace ---------------
     {
       is_whitespace := true
       line_bytes := src_data[line_start:line_end]
@@ -75,7 +76,7 @@ tokenize_source_code :: proc(src_data: []byte)
 
     sim.lines[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE)
     
-    // Tokenize line
+    // --- Tokenize line ---------------
     {
       line_bytes := src_data[line_start:line_end]
       line := sim.lines[line_idx]
@@ -143,9 +144,9 @@ tokenize_source_code :: proc(src_data: []byte)
           continue tokenizer_loop
         }
 
-        // Tokenize opcode
+        // --- Tokenize opcode ---------------
         { 
-          tok_str_lower := str_to_lower(tok_str, context.temp_allocator)
+          tok_str_lower := str_to_lower(tok_str, scratch.arena)
           op_type := opcode_table[tok_str_lower]
           if op_type != .NIL
           {
@@ -156,7 +157,7 @@ tokenize_source_code :: proc(src_data: []byte)
           }
         }
 
-        // Tokenize number
+        // --- Tokenize number ----------------
         if str_is_bin(tok_str) || str_is_dec(tok_str) || str_is_hex(tok_str)
         {
           line.tokens[token_cnt] = Token{data=tok_str, type=.NUMBER}
@@ -164,10 +165,10 @@ tokenize_source_code :: proc(src_data: []byte)
           continue tokenizer_loop
         }
 
-        // Tokenize operator
+        // --- Tokenize operator ---------------
         {
           @(static)
-          operators := [?]TokenType{':' = .COLON, '=' = .EQUALS}
+          operators := [?]Token_Type{':' = .COLON, '=' = .EQUALS}
           
           if tok_str == ":" || tok_str == "="
           {
@@ -177,7 +178,7 @@ tokenize_source_code :: proc(src_data: []byte)
           }
         }
 
-        // Tokenize directive
+        // --- Tokenize directive ---------------
         if tok_str[0] == '.'
         {
           line.tokens[token_cnt] = Token{data=tok_str, type=.DIRECTIVE}
@@ -185,7 +186,7 @@ tokenize_source_code :: proc(src_data: []byte)
           continue tokenizer_loop
         }
 
-        // Tokenize register
+        // --- Tokenize register ---------------
         {
           register_id, ok := register_from_string(tok_str)
           if ok
@@ -201,7 +202,7 @@ tokenize_source_code :: proc(src_data: []byte)
           }
         }
 
-        // Tokenize label
+        // --- Tokenize label ---------------
         {
           line.tokens[token_cnt] = Token{data=tok_str, type=.LABEL}
           token_cnt += 1
@@ -227,7 +228,7 @@ syntax_check_lines :: proc() -> bool
 {
   for line_idx := 0; line_idx < sim.line_count; line_idx += 1
   {
-    error: ParserError
+    error: Parser_Error
     line := sim.lines[line_idx]
 
     if line.tokens == nil do continue
@@ -235,7 +236,7 @@ syntax_check_lines :: proc() -> bool
     if line.tokens[0].type == .LABEL &&
        line.tokens[1].type == .OPCODE
     {
-      error = SyntaxError{
+      error = Syntax_Error{
         type = .MISSING_COLON,
         line = line.tokens[0].line
       }
@@ -254,9 +255,9 @@ semantics_check_instructions :: proc() -> (ok: bool)
   for instruction_idx := 0; instruction_idx < sim.instruction_count; instruction_idx += 1
   {
     instruction := sim.instructions[instruction_idx]
-    error: ParserError
+    error: Parser_Error
 
-    // Fetch opcode and operands ----------------
+    // --- Fetch opcode and operands ---------------
     opcode: Token
     operands: [3]Token
     operand_cnt: int
@@ -303,7 +304,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .RET:
         if operand_cnt != 0
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 0,
@@ -313,9 +314,11 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
       case .MV:
+      case .SLTZ:
+      case .SGTZ:
         if operand_cnt != 2
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 2,
@@ -327,7 +330,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -337,7 +340,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[1].type
           }
@@ -349,7 +352,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .AUIPC:
         if operand_cnt != 2
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 2,
@@ -361,7 +364,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -371,7 +374,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .NUMBER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[1].type
           }
@@ -385,10 +388,12 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .XOR: fallthrough
       case .SLL: fallthrough
       case .SRL: fallthrough
-      case .SRA:
+      case .SRA: fallthrough
+      case .SLT: fallthrough
+      case .SGT:
         if operand_cnt != 3
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 3,
@@ -400,7 +405,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -410,7 +415,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[1].type
           }
@@ -420,7 +425,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[2].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[2].type
           }
@@ -431,7 +436,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .NEG:
         if operand_cnt != 1
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 1,
@@ -443,7 +448,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -456,10 +461,12 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .XORI: fallthrough
       case .SLLI: fallthrough
       case .SRLI: fallthrough
-      case .SRAI:
+      case .SRAI: fallthrough
+      case .SLTI: fallthrough
+      case .SGTI:
         if operand_cnt != 3
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 3,
@@ -471,7 +478,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -481,7 +488,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[1].type
           }
@@ -491,7 +498,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[2].type != .NUMBER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[2].type
           }
@@ -502,7 +509,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .JAL:
         if operand_cnt != 1
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 1,
@@ -514,7 +521,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .LABEL && operands[0].type != .NUMBER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[0].type
           }
@@ -526,7 +533,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .JALR:
         if operand_cnt != 1
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 1,
@@ -538,7 +545,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -553,7 +560,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .BGE:
         if operand_cnt != 3
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 3,
@@ -565,7 +572,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -575,7 +582,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[1].type
           }
@@ -585,7 +592,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[2].type != .NUMBER && operands[2].type != .LABEL
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[2].type
           }
@@ -600,7 +607,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .BGEZ:
         if operand_cnt != 2
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 2,
@@ -612,7 +619,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -622,7 +629,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .NUMBER && operands[2].type != .LABEL
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[1].type
           }
@@ -637,7 +644,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
       case .SW:
         if operand_cnt != 2 && operand_cnt != 3
         {
-          error = OpcodeError{
+          error = Opcode_Error{
             token = opcode,
             type = .INVALID_OPERAND_COUNT,
             expected_operand_cnt = 2,
@@ -649,7 +656,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[0].type != .REGISTER
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[0].type
           }
@@ -659,7 +666,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[1].type != .REGISTER && operands[1].type != .LABEL
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .REGISTER,
             actual_type = operands[1].type
           }
@@ -671,7 +678,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
            operands[2].type != .NUMBER && 
            operands[2].type != .LABEL
         {
-          error = TypeError{
+          error = Type_Error{
             expected_type = .NUMBER,
             actual_type = operands[2].type
           }
@@ -735,9 +742,9 @@ print_tokens_at :: proc(idx: int)
   fmt.print("\n")
 }
 
-register_from_string :: proc(str: string) -> (RegisterID, bool)
+register_from_string :: proc(str: string) -> (Register_ID, bool)
 {
-  result: RegisterID
+  result: Register_ID
   ok := true
 
   switch str
@@ -836,23 +843,23 @@ line_is_instruction :: proc(line: Line) -> bool
 
 // @ParserError ////////////////////////////////////////////////////////////////
 
-ParserError :: union
+Parser_Error :: union
 {
-  SyntaxError,
-  TypeError,
-  OpcodeError,
+  Syntax_Error,
+  Type_Error,
+  Opcode_Error,
 }
 
-SyntaxError :: struct
+Syntax_Error :: struct
 {
   line: int,
   column: int,
   token: Token,
 
-  type: SyntaxErrorType,
+  type: Syntax_Error_Type,
 }
 
-SyntaxErrorType :: enum
+Syntax_Error_Type :: enum
 {
   MISSING_IDENTIFIER,
   MISSING_LITERAL,
@@ -860,33 +867,33 @@ SyntaxErrorType :: enum
   UNIDENTIFIED_IDENTIFIER,
 }
 
-TypeError :: struct
+Type_Error :: struct
 {
   line: int,
   column: int,
   token: Token,
 
-  expected_type: TokenType,
-  actual_type: TokenType,
+  expected_type: Token_Type,
+  actual_type: Token_Type,
 }
 
-OpcodeError :: struct
+Opcode_Error :: struct
 {
   line: int,
   column: int,
   token: Token,
 
-  type: OpcodeErrorType,
+  type: Opcode_Error_Type,
   expected_operand_cnt: int,
   actual_operand_cnt: int,
 }
 
-OpcodeErrorType :: enum
+Opcode_Error_Type :: enum
 {
   INVALID_OPERAND_COUNT,
 }
 
-resolve_parser_error :: proc(error: ParserError, line_idx: int) -> bool
+resolve_parser_error :: proc(error: Parser_Error, line_idx: int) -> bool
 {
   if error == nil do return false
 
@@ -895,7 +902,7 @@ resolve_parser_error :: proc(error: ParserError, line_idx: int) -> bool
 
   switch v in error
   {
-  case SyntaxError:
+  case Syntax_Error:
     switch v.type
     {
     case .MISSING_COLON: 
@@ -907,11 +914,11 @@ resolve_parser_error :: proc(error: ParserError, line_idx: int) -> bool
     case .UNIDENTIFIED_IDENTIFIER: 
       fmt.printf("")
     }
-  case TypeError:
+  case Type_Error:
     fmt.printf("Type mismatch. Expected \'%s\', got \'%s\'.\n", 
                 v.expected_type, 
                 v.actual_type)
-  case OpcodeError:
+  case Opcode_Error:
     switch v.type
     {
     case .INVALID_OPERAND_COUNT:

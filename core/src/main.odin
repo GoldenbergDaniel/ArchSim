@@ -1,10 +1,10 @@
 package main
 
 import "core:fmt"
-import "core:mem/virtual"
 import "core:os"
 
-import "term"
+import "src:basic/mem"
+import "src:term"
 
 MAX_SRC_BUF_BYTES   :: 2048
 MAX_LINES           :: 64
@@ -28,19 +28,16 @@ Simulator :: struct
   instruction_count: int,
   next_instruction_idx: int,
   symbol_table: map[string]Number,
-  data_section_pos: int,
-  text_section_pos: int,
 
   program_counter: int,
-  registers: [RegisterID]Number,
-  registers_prev: [RegisterID]Number,
+  registers: [Register_ID]Number,
+  registers_prev: [Register_ID]Number,
   memory: []byte,
 
-  perm_arena: virtual.Arena,
-  temp_arena: virtual.Arena
+  perm_arena: mem.Arena,
 }
 
-OpcodeType :: enum
+Opcode_Type :: enum
 {
   NIL,
 
@@ -66,6 +63,12 @@ OpcodeType :: enum
   SRLI,
   SRA,
   SRAI,
+  SLT,
+  SLTI,
+  SLTZ,
+  SGT,
+  SGTI,
+  SGTZ,
 
   J,
   JR,
@@ -97,7 +100,7 @@ OpcodeType :: enum
   AUIPC,
 }
 
-RegisterID :: enum
+Register_ID :: enum
 {
   ZR, RA, SP, GP, TP, T0, T1, T2, 
   FP, S1, A0, A1, A2, A3, A4, A5, 
@@ -108,10 +111,10 @@ RegisterID :: enum
 Operand :: union
 {
   Number,
-  RegisterID,
+  Register_ID,
 }
 
-opcode_table: map[string]OpcodeType = {
+opcode_table: map[string]Opcode_Type = {
   ""      = .NIL,
 
   "nop"   = .NOP,
@@ -136,6 +139,12 @@ opcode_table: map[string]OpcodeType = {
   "srli"  = .SRLI,
   "sra"   = .SRA,
   "srai"  = .SRAI,
+  "slt"   = .SLT,
+  "slti"  = .SLTI,
+  "sltz"  = .SLTZ,
+  "sgt"   = .SGT,
+  "sgti"  = .SGTI,
+  "sgtz"  = .SGTZ,
 
   "j"     = .J,
   "jr"    = .JR,
@@ -171,24 +180,16 @@ sim: Simulator
 
 main :: proc()
 {
-  // Initialize memory arenas ----------------
+  // --- Initialize permenant arena ---------------
   {
-    err := virtual.arena_init_static(&sim.perm_arena)
+    err := mem.init_arena_static(&sim.perm_arena)
     assert(err == nil, "Failed to initialize perm arena!")
-
-    err = virtual.arena_init_growing(&sim.temp_arena)
-    assert(err == nil, "Failed to initialize temp arena!")
+    context.allocator = mem.allocator(&sim.perm_arena)
   }
-
-  perm_arena_allocator := virtual.arena_allocator(&sim.perm_arena)
-  context.allocator = perm_arena_allocator
-
-  temp_arena_allocator := virtual.arena_allocator(&sim.temp_arena)
-  context.temp_allocator = temp_arena_allocator
 
   tui_print_welcome()
 
-  src_file_path := "asm/main.asm"
+  src_file_path := "asm/main.s"
   if len(os.args) > 1
   {
     src_file_path = os.args[1]
@@ -212,54 +213,51 @@ main :: proc()
   sim.memory = make([]byte, MEMORY_SIZE)
   sim.step_to_next = true
 
-  // Tokenize ----------------
+  // --- Tokenize ---------------
   tokenize_source_code(src_data)
 
-  // Preprocess ----------------
+  // --- Preprocess ---------------
   {
-    data_offset: Address
+    scratch := mem.begin_temp()
+    defer mem.end_temp(scratch)
+
+    data_offset: int
 
     for line_idx := 0; line_idx < sim.line_count; line_idx += 1
     {
-      defer free_all(context.temp_allocator)
-
       if sim.lines[line_idx].tokens == nil do continue
 
       line := sim.lines[line_idx]
-
       if line.tokens[0].type == .DIRECTIVE
       {
-        if len(line.tokens) < 2 do continue
-
+        should_store_memory: bool
+        size_to_store: int
+        
         switch line.tokens[0].data
         {
         case ".equ":
           val := cast(Number) str_to_int(line.tokens[2].data)
           sim.symbol_table[line.tokens[1].data] = val
         case ".byte":
-          val := cast(Number) str_to_int(line.tokens[2].data)
-          bytes := bytes_from_value(val, 1, context.temp_allocator)
-          address := BASE_ADDRESS + data_offset
-          memory_store_bytes(address, bytes)
-
-          sim.symbol_table[line.tokens[1].data] = cast(Number) address
-          data_offset += 1
+          should_store_memory = true
+          size_to_store = 1
         case ".half":
-          val := cast(Number) str_to_int(line.tokens[2].data)
-          bytes := bytes_from_value(val, 2, context.temp_allocator)
-          address := BASE_ADDRESS + data_offset
-          memory_store_bytes(address, bytes)
-
-          sim.symbol_table[line.tokens[1].data] = cast(Number) address
-          data_offset += 2
+          should_store_memory = true
+          size_to_store = 2
         case ".word":
+          should_store_memory = true
+          size_to_store = 4
+        }
+
+        if should_store_memory
+        {
           val := cast(Number) str_to_int(line.tokens[2].data)
-          bytes := bytes_from_value(val, 4, context.temp_allocator)
-          address := BASE_ADDRESS + data_offset
+          bytes := bytes_from_value(val, size_to_store, scratch.arena)
+          address := BASE_ADDRESS + Address(data_offset)
           memory_store_bytes(address, bytes)
           
           sim.symbol_table[line.tokens[1].data] = cast(Number) address
-          data_offset += 4
+          data_offset += size_to_store
         }
       }
 
@@ -274,7 +272,7 @@ main :: proc()
   syntax_ok := syntax_check_lines()
   if !syntax_ok do return
 
-  // Instructions from lines ----------------
+  // --- Instructions from lines ---------------
   for &line in sim.lines do if line_is_instruction(line)
   {
     sim.instructions[sim.instruction_count] = &line
@@ -284,10 +282,11 @@ main :: proc()
   semantics_ok := semantics_check_instructions()
   if !semantics_ok do return
 
-  // Execute ----------------
+  // --- Execute ---------------
   for sim.program_counter < sim.instruction_count
   {
-    defer free_all(context.temp_allocator)
+    temp := mem.begin_temp()
+    defer mem.end_temp(temp)
 
     instruction := sim.instructions[sim.program_counter]
 
@@ -296,7 +295,7 @@ main :: proc()
       sim.step_to_next = true
     }
 
-    // Prompt user command ----------------
+    // --- Prompt user command ---------------
     if sim.step_to_next && sim.program_counter < sim.line_count
     {
       for done: bool; !done;
@@ -309,7 +308,7 @@ main :: proc()
 
     sim.next_instruction_idx = sim.program_counter + 1
 
-    // Fetch opcode and operands ----------------
+    // --- Fetch opcode and operands ----------------
     opcode: Token
     operands: [3]Token
     {
@@ -335,16 +334,16 @@ main :: proc()
     case .NOP:
     case .MV: fallthrough
     case .LI:
-      dest_reg, _ := operand_from_operands(operands[:], 0)
+      dst_reg, _ := operand_from_operands(operands[:], 0)
       op1_reg, _ := operand_from_operands(operands[:], 1)
       
       #partial switch opcode.opcode_type
       {
       case .MV:
-        sim.registers[dest_reg.(RegisterID)] = sim.registers[op1_reg.(RegisterID)]
+        sim.registers[dst_reg.(Register_ID)] = sim.registers[op1_reg.(Register_ID)]
       case .LI:
-        sim.registers[dest_reg.(RegisterID)] = op1_reg.(Number)
-    }
+        sim.registers[dst_reg.(Register_ID)] = op1_reg.(Number)
+      }
     case .ADD:  fallthrough
     case .ADDI: fallthrough
     case .SUB:  fallthrough
@@ -362,6 +361,12 @@ main :: proc()
     case .SRLI: fallthrough
     case .SRA:  fallthrough
     case .SRAI: fallthrough
+    case .SLT:  fallthrough
+    case .SLTI: fallthrough
+    case .SLTZ: fallthrough
+    case .SGT:  fallthrough
+    case .SGTI: fallthrough
+    case .SGTZ: fallthrough
     case .LUI:  fallthrough
     case .AUIPC:
       dest_reg, _ := operand_from_operands(operands[:], 0)
@@ -373,13 +378,13 @@ main :: proc()
       switch v in op1_reg
       {
       case Number:     val1 = v
-      case RegisterID: val1 = sim.registers[v]
+      case Register_ID: val1 = sim.registers[v]
       }
 
       switch v in op2_reg
       {
       case Number:     val2 = v
-      case RegisterID: val2 = sim.registers[v]
+      case Register_ID: val2 = sim.registers[v]
       }
       
       result: Number
@@ -392,13 +397,17 @@ main :: proc()
       case .XOR:        result = val1 | val2
       case .NOT:        result = ~val1
       case .NEG:        result = -result
-      case .SLL, .SLLI: result = val1 << uint(val2)
+      case .SLL, .SLLI: result = val1 << uint(val2) // NOTE(dg): These may not be right.
       case .SRL, .SRLI: result = val1 >> uint(val2)
       case .SRA, .SRAI: result = arithmetic_shift_right(val1, uint(val2))
+      case .SLT, .SLTI: result = val1 < val2 ? 1 : 0
+      case .SLTZ:       result = val1 < 0 ? 1 : 0
+      case .SGT, .SGTI: result = val1 > val2 ? 1 : 0
+      case .SGTZ:       result = val1 > 0 ? 1 : 0
       case .LUI:        result = val1 << 12
       case .AUIPC:      result = Number(sim.program_counter) + val1 << 12
 
-      sim.registers[dest_reg.(RegisterID)] = result
+      sim.registers[dest_reg.(Register_ID)] = result
     }
     case .BEQ:  fallthrough
     case .BNE:  fallthrough
@@ -421,13 +430,13 @@ main :: proc()
       switch v in oper1
       {
       case Number:     val1 = v
-      case RegisterID: val1 = sim.registers[v]
+      case Register_ID: val1 = sim.registers[v]
       }
 
       switch v in oper2
       {
       case Number:     val2 = v
-      case RegisterID: val2 = sim.registers[v]
+      case Register_ID: val2 = sim.registers[v]
       }
 
       should_jump: bool
@@ -465,13 +474,13 @@ main :: proc()
       case .J:
         target_jump_addr = cast(Address) oper.(Number)
       case .JR:
-        target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
+        target_jump_addr = cast(Address) sim.registers[oper.(Register_ID)]
       case .JAL:
         sim.registers[.RA] = cast(Number) target_jump_addr
         target_jump_addr = cast(Address) oper.(Number)
       case .JALR:
         sim.registers[.RA] = cast(Number) target_jump_addr
-        target_jump_addr = cast(Address) sim.registers[oper.(RegisterID)]
+        target_jump_addr = cast(Address) sim.registers[oper.(Register_ID)]
       case .RET:
         target_jump_addr = cast(Address) sim.registers[.RA]
       }
@@ -498,16 +507,16 @@ main :: proc()
       switch v in src
       {
       case Number:     src_addr += cast(Address) v
-      case RegisterID: src_addr += cast(Address) sim.registers[v]
+      case Register_ID: src_addr += cast(Address) sim.registers[v]
       }
 
       @(static)
-      sizes := [?]uint{OpcodeType.LB = 1, OpcodeType.LH = 2, OpcodeType.LW = 4}
-
+      sizes := [?]uint{Opcode_Type.LB = 1, Opcode_Type.LH = 2, Opcode_Type.LW = 4}
+      
       type := opcode.opcode_type
       bytes := memory_load_bytes(src_addr, sizes[type])
       value := value_from_bytes(bytes)
-      sim.registers[dest.(RegisterID)] = value
+      sim.registers[dest.(Register_ID)] = value
     case .SB: fallthrough
     case .SH: fallthrough
     case .SW:
@@ -519,22 +528,23 @@ main :: proc()
       switch v in dest
       {
       case Number:     dest_address += cast(Address) v
-      case RegisterID: dest_address += cast(Address) sim.registers[v]
+      case Register_ID: dest_address += cast(Address) sim.registers[v]
       }
 
       @(static)
-      sizes := [?]int{OpcodeType.SB = 1, OpcodeType.SH = 2, OpcodeType.SW = 4}
+      sizes := [?]int{Opcode_Type.SB = 1, Opcode_Type.SH = 2, Opcode_Type.SW = 4}
       
       type := opcode.opcode_type
-      value := sim.registers[src.(RegisterID)]
-      bytes := bytes_from_value(value, sizes[type], context.temp_allocator)
+      value := sim.registers[src.(Register_ID)]
+      bytes := bytes_from_value(value, sizes[type], temp.arena)
       memory_store_bytes(dest_address, bytes)
     }
 
     tui_print_sim_result(instruction^, sim.next_instruction_idx)
     sim.program_counter = sim.next_instruction_idx
 
-    if !(sim.step_to_next && sim.program_counter < sim.line_count - 1)
+    if !(sim.step_to_next && 
+         sim.program_counter < (sim.instruction_count - 1) * 4)
     {
       fmt.print("\n")
     }
@@ -577,7 +587,7 @@ address_from_line_index :: proc(idx: int) -> Address
   }
   else
   {
-    for i := sim.text_section_pos; i < idx; i += 1
+    for i := 0; i < idx; i += 1
     {
       if line_is_instruction(sim.lines[i])
       {
@@ -598,41 +608,15 @@ line_index_from_address :: proc(address: Address) -> int
   assert(int(address - BASE_ADDRESS) < sim.line_count * INSTRUCTION_SIZE)
 
   result: int
-
-  address := address
-  address -= BASE_ADDRESS
-  accumulator: Address
-
-  @(static)
-  address_to_line_num_cache: [MAX_LINES]int
-
-  if address_to_line_num_cache[address] != 0
-  {
-    result = address_to_line_num_cache[address]
-  }
-  else
-  {
-    for i := 0; i < sim.line_count && accumulator <= address; i += 1
-    {
-      if sim.instructions[i].tokens != nil && i >= sim.text_section_pos
-      {
-        accumulator += INSTRUCTION_SIZE
-      }
-
-      result += 1
-    }
-
-    address_to_line_num_cache[address] = result
-  }
-
-  result -= 1
+  instruction_idx := instruction_index_from_address(address)
+  result = sim.instructions[instruction_idx].line_idx
 
   return result
 }
 
 arithmetic_shift_right :: proc(number: Number, shift: uint) -> Number
 {
-  number := number  
+  number := number
 
   for _ in 0..<shift
   {
@@ -688,13 +672,13 @@ value_from_bytes :: proc(bytes: []byte) -> Number
   return result
 }
 
-bytes_from_value :: proc(value: Number, size: int, arena: Allocator) -> []byte
+bytes_from_value :: proc(value: Number, size: int, arena: ^mem.Arena) -> []byte
 {
-  result: []byte = make([]byte, size, arena)
+  result: []byte = make([]byte, size, mem.allocator(arena))
 
   for i in 0..<size
   {
-    result[i] = byte((value >> (uint(size-i-1) * 8)) & 0b11111111)
+    result[i] = byte((value >> (uint(size-i-1) * 8)) & 0xFF)
   }
 
   return result

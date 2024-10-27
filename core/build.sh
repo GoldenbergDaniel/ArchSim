@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SOURCE="src"
-OUTPUT="archsim"
+OUTPUT="riscbox"
 
 MODE="dev"
 if [[ $1 == "d" ]]; then MODE="debug"; fi
@@ -20,4 +20,4 @@ echo [target:$TARGET]
 echo [mode:$MODE]
 
 if [[ ! -d "out" ]]; then mkdir out; fi
-odin build $SOURCE -out:out/$OUTPUT -target:$TARGET $FLAGS
+odin build $SOURCE -out:out/$OUTPUT -target:$TARGET $FLAGS -collection:src=src

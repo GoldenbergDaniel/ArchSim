@@ -2,7 +2,7 @@
 setlocal
 
 set SOURCE=src
-set OUTPUT=out/archsim.exe
+set OUTPUT=riscbox.exe
 
 set MODE=dev
 if "%1%"=="d" set MODE=debug
@@ -25,4 +25,4 @@ echo [target:%TARGET%]
 echo [mode:%MODE%]
 
 if not exist out mkdir out
-odin build %SOURCE% -out:%OUTPUT% -target:%TARGET% %FLAGS%
+odin build %SOURCE% -out:out/%OUTPUT% -target:%TARGET% %FLAGS%
