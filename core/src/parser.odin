@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:strings"
 
 import "src:basic/mem"
 import "src:term"
@@ -24,6 +25,7 @@ Token_Type :: enum
   LABEL,
   DIRECTIVE,
   NUMBER,
+  CHARACTER,
   COLON,
   EQUALS,
 }
@@ -37,7 +39,7 @@ Line :: struct
 
 tokenize_source_code :: proc(src_data: []byte)
 {
-  scratch := mem.begin_temp()
+  scratch := mem.begin_temp(mem.get_scratch())
   defer mem.end_temp(scratch)
 
   line_start, line_end: int
@@ -122,7 +124,7 @@ tokenize_source_code :: proc(src_data: []byte)
               whitespace = false
             }
           }
-          else if b == ':' || b == '=' || b == ',' || b == ' ' || b == '[' || b == ']'
+          else if b == ':' || b == '=' || b == ','  || b == ' ' || b == '[' || b == ']'
           {
             offset = cast(int) (i == tokenizer.pos)
             break
@@ -146,11 +148,15 @@ tokenize_source_code :: proc(src_data: []byte)
 
         // --- Tokenize opcode ---------------
         { 
-          tok_str_lower := str_to_lower(tok_str, scratch.arena)
+          tok_str_lower := strings.to_lower(tok_str, mem.allocator(scratch.arena))
           op_type := opcode_table[tok_str_lower]
           if op_type != .NIL
           {
-            line.tokens[token_cnt] = Token{data=tok_str, type=.OPCODE}
+            line.tokens[token_cnt] = Token{
+              data=tok_str, 
+              type=.OPCODE
+            }
+
             line.tokens[token_cnt].opcode_type = op_type
             token_cnt += 1
             continue tokenizer_loop
@@ -160,7 +166,24 @@ tokenize_source_code :: proc(src_data: []byte)
         // --- Tokenize number ----------------
         if str_is_bin(tok_str) || str_is_dec(tok_str) || str_is_hex(tok_str)
         {
-          line.tokens[token_cnt] = Token{data=tok_str, type=.NUMBER}
+          line.tokens[token_cnt] = Token{
+            data=tok_str, 
+            type=.NUMBER
+          }
+
+          token_cnt += 1
+          continue tokenizer_loop
+        }
+
+        // --- Tokenize character ---------------
+        if tok_str[0] == '\''
+        {
+          chr := tok_str[1:len(tok_str)-1]
+          line.tokens[token_cnt] = Token{
+            data=chr, 
+            type=.CHARACTER
+          }
+
           token_cnt += 1
           continue tokenizer_loop
         }
@@ -172,7 +195,11 @@ tokenize_source_code :: proc(src_data: []byte)
           
           if tok_str == ":" || tok_str == "="
           {
-            line.tokens[token_cnt] = Token{data=tok_str, type=operators[tok_str[0]]}
+            line.tokens[token_cnt] = Token{
+              data=tok_str, 
+              type=operators[tok_str[0]]
+            }
+
             token_cnt += 1
             continue tokenizer_loop
           }
@@ -181,7 +208,11 @@ tokenize_source_code :: proc(src_data: []byte)
         // --- Tokenize directive ---------------
         if tok_str[0] == '.'
         {
-          line.tokens[token_cnt] = Token{data=tok_str, type=.DIRECTIVE}
+          line.tokens[token_cnt] = Token{
+            data=tok_str, 
+            type=.DIRECTIVE
+          }
+
           token_cnt += 1
           continue tokenizer_loop
         }
@@ -204,7 +235,11 @@ tokenize_source_code :: proc(src_data: []byte)
 
         // --- Tokenize label ---------------
         {
-          line.tokens[token_cnt] = Token{data=tok_str, type=.LABEL}
+          line.tokens[token_cnt] = Token{
+            data=tok_str, 
+            type=.LABEL
+          }
+
           token_cnt += 1
           continue tokenizer_loop
         }
@@ -372,7 +407,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
 
-        if operands[1].type != .NUMBER
+        if operands[1].type != .NUMBER && operands[1].type != .CHARACTER
         {
           error = Type_Error{
             expected_type = .NUMBER,
@@ -496,7 +531,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
 
-        if operands[2].type != .NUMBER
+        if operands[2].type != .NUMBER && operands[1].type != .CHARACTER
         {
           error = Type_Error{
             expected_type = .NUMBER,
@@ -519,7 +554,8 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
 
-        if operands[0].type != .LABEL && operands[0].type != .NUMBER
+        if operands[0].type != .LABEL && (operands[0].type != .NUMBER && 
+                                          operands[1].type != .CHARACTER)
         {
           error = Type_Error{
             expected_type = .NUMBER,
@@ -590,7 +626,9 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
 
-        if operands[2].type != .NUMBER && operands[2].type != .LABEL
+        if operands[2].type != .NUMBER &&
+           operands[1].type != .CHARACTER &&
+           operands[2].type != .LABEL
         {
           error = Type_Error{
             expected_type = .NUMBER,
@@ -627,7 +665,9 @@ semantics_check_instructions :: proc() -> (ok: bool)
           break
         }
 
-        if operands[1].type != .NUMBER && operands[2].type != .LABEL
+        if operands[1].type != .NUMBER && 
+           operands[1].type != .CHARACTER &&
+           operands[2].type != .LABEL
         {
           error = Type_Error{
             expected_type = .NUMBER,
@@ -676,6 +716,7 @@ semantics_check_instructions :: proc() -> (ok: bool)
 
         if operands[2].type != .NIL && 
            operands[2].type != .NUMBER && 
+           operands[2].type != .CHARACTER && 
            operands[2].type != .LABEL
         {
           error = Type_Error{
@@ -789,7 +830,7 @@ register_from_string :: proc(str: string) -> (Register_ID, bool)
 
 opcode_pos_in_instruction :: proc(instruction: Line) -> int
 {
-  result: int
+  result: int = -1
 
   if instruction.tokens[0].opcode_type != .NIL
   {
@@ -803,42 +844,38 @@ opcode_pos_in_instruction :: proc(instruction: Line) -> int
   return result
 }
 
-operand_from_operands :: proc(operands: []Token, idx: int) -> (Operand, bool)
+operand_from_token :: proc(token: Token) -> (Operand, bool)
 {
   result: Operand
-  err: bool
+  ok: bool
 
-  token := operands[idx]
-
-  if token.type == .NUMBER
+  #partial switch token.type
   {
+  case .NUMBER:
     result = cast(Number) str_to_int(token.data)
-  }
-  else if token.type == .REGISTER
-  {
+  case .CHARACTER:
+    conv_b, conv_ok := str_to_byte(token.data)
+    result = cast(Number) conv_b
+    ok = conv_ok && ok
+  case .REGISTER:
     result = token.register_id
-  }
-  else if token.type == .LABEL
-  {
-    ok: bool
-    result, ok = sim.symbol_table[token.data]
-    err = !ok
+  case .LABEL:
+    map_ok: bool
+    result, map_ok = sim.symbol_table[token.data]
+    ok = map_ok && ok
+  case:
+    panic("Not a token!")
   }
 
-  return result, err
+  return result, ok
 }
 
 line_is_instruction :: proc(line: Line) -> bool
 {
-  if line.tokens == nil do return false
-  if len(line.tokens) == 0 do return false
-  if !(line.tokens[0].type == .OPCODE) &&
-     !(line.tokens[0].type == .LABEL && line.tokens[2].type == .OPCODE)
-  {
-    return false
-  }
-
-  return true
+  return line.tokens != nil && 
+         len(line.tokens) != 0 &&
+         (line.tokens[0].type == .OPCODE ||
+         (line.tokens[0].type == .LABEL && line.tokens[2].type == .OPCODE))
 }
 
 // @ParserError ////////////////////////////////////////////////////////////////

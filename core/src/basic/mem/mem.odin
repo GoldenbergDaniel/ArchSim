@@ -14,16 +14,13 @@ MIB :: 1 << 20
 GIB :: 1 << 30
 
 @(thread_local, private)
-global_temp: Arena
-
-@(thread_local, private)
-global_temp_ptr: ^Arena
+scratches: [2]Arena
 
 @(init)
-init_thread_local_arena :: proc()
+init_scratches :: proc()
 {
-	init_arena_growing(&global_temp) 
-	global_temp_ptr = &global_temp
+	init_arena_growing(&scratches[0])
+	init_arena_growing(&scratches[1])
 }
 
 copy :: #force_inline proc "contextless" (dst, src: rawptr, len: int) -> rawptr
@@ -83,7 +80,7 @@ destroy_arena :: #force_inline proc(arena: ^Arena)
 	virtual.arena_destroy(arena)
 }
 
-begin_temp :: #force_inline proc(arena: ^Arena = global_temp_ptr) -> Arena_Temp
+begin_temp :: #force_inline proc(arena: ^Arena) -> Arena_Temp
 {
 	return virtual.arena_temp_begin(arena)
 }
@@ -91,4 +88,18 @@ begin_temp :: #force_inline proc(arena: ^Arena = global_temp_ptr) -> Arena_Temp
 end_temp :: #force_inline proc(temp: Arena_Temp)
 {
 	virtual.arena_temp_end(temp)
+}
+
+get_scratch :: proc(conflict: ^Arena = nil) -> ^Arena
+{
+	result := &scratches[0]
+
+	if conflict == nil do return result
+
+	if cast(uintptr) result.curr_block.base == cast(uintptr) conflict.curr_block.base
+	{
+		result = &scratches[1]
+	}
+
+	return result
 }

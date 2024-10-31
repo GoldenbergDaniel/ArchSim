@@ -2,27 +2,6 @@ package main
 
 import "core:math"
 
-import "src:basic/mem"
-
-str_to_lower :: proc(str: string, arena: ^mem.Arena) -> string
-{
-  result := make([]byte, len(str), mem.allocator(arena))
-  
-  for i in 0..<len(str)
-  {
-    if str[i] >= 65 && str[i] <= 90
-    {
-      result[i] = str[i] + 32
-    }
-    else
-    {
-      result[i] = str[i]
-    }
-  }
-
-  return cast(string) result
-}
-
 str_is_dec :: proc(str: string) -> bool
 {
   if len(str) == 0 do return false
@@ -140,6 +119,35 @@ str_to_int :: proc(str: string) -> int
   }
 
   return result
+}
+
+str_to_byte :: proc(str: string) -> (byte, bool)
+{
+  result: byte
+  ok: bool = true
+
+  if len(str) == 1
+  {
+    result = str[0]
+  }
+  else
+  {
+    switch str
+    {
+    case "\\a": result = '\a'
+    case "\\b": result = '\b'
+    case "\\e": result = '\e'
+    case "\\f": result = '\f'
+    case "\\n": result = '\n'
+    case "\\r": result = '\r'
+    case "\\t": result = '\t'
+    case "\\v": result = '\v'
+    case "\\0": result = 0
+    case: ok = false
+    }
+  }
+
+  return result, ok
 }
 
 str_strip_crlf :: proc(str: string) -> string

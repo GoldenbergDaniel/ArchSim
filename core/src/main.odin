@@ -215,10 +215,12 @@ main :: proc()
 
   // --- Tokenize ---------------
   tokenize_source_code(src_data)
+  // print_tokens()
+  // if true do return
 
   // --- Preprocess ---------------
   {
-    scratch := mem.begin_temp()
+    scratch := mem.begin_temp(mem.get_scratch())
     defer mem.end_temp(scratch)
 
     data_offset: int
@@ -253,9 +255,9 @@ main :: proc()
         {
           val := cast(Number) str_to_int(line.tokens[2].data)
           bytes := bytes_from_value(val, size_to_store, scratch.arena)
-          address := BASE_ADDRESS + Address(data_offset)
+          address := cast(Address) (BASE_ADDRESS + data_offset)
           memory_store_bytes(address, bytes)
-          
+
           sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += size_to_store
         }
@@ -285,7 +287,7 @@ main :: proc()
   // --- Execute ---------------
   for sim.program_counter < sim.instruction_count
   {
-    temp := mem.begin_temp()
+    temp := mem.begin_temp(mem.get_scratch())
     defer mem.end_temp(temp)
 
     instruction := sim.instructions[sim.program_counter]
@@ -334,8 +336,8 @@ main :: proc()
     case .NOP:
     case .MV: fallthrough
     case .LI:
-      dst_reg, _ := operand_from_operands(operands[:], 0)
-      op1_reg, _ := operand_from_operands(operands[:], 1)
+      dst_reg, _ := operand_from_token(operands[0])
+      op1_reg, _ := operand_from_token(operands[1])
       
       #partial switch opcode.opcode_type
       {
@@ -369,9 +371,9 @@ main :: proc()
     case .SGTZ: fallthrough
     case .LUI:  fallthrough
     case .AUIPC:
-      dest_reg, _ := operand_from_operands(operands[:], 0)
-      op1_reg, _ := operand_from_operands(operands[:], 1)
-      op2_reg, _ := operand_from_operands(operands[:], 2)
+      dest_reg, _ := operand_from_token(operands[0])
+      op1_reg, _ := operand_from_token(operands[1])
+      op2_reg, _ := operand_from_token(operands[2])
 
       val1, val2: Number
       
@@ -421,9 +423,9 @@ main :: proc()
     case .BGTZ: fallthrough
     case .BLEZ: fallthrough
     case .BGEZ:
-      oper1, _ := operand_from_operands(operands[:], 0)
-      oper2, _ := operand_from_operands(operands[:], 1)
-      dest, _ := operand_from_operands(operands[:], 2)
+      oper1, _ := operand_from_token(operands[0])
+      oper2, _ := operand_from_token(operands[1])
+      dest, _ := operand_from_token(operands[2])
 
       val1, val2: Number
 
@@ -466,7 +468,7 @@ main :: proc()
     case .JAL:  fallthrough
     case .JALR: fallthrough
     case .RET:
-      oper, _ := operand_from_operands(operands[:], 0)
+      oper, _ := operand_from_token(operands[0])
       target_jump_addr := address_from_instruction_index(sim.program_counter + 1)
       
       #partial switch opcode.opcode_type
@@ -490,9 +492,9 @@ main :: proc()
     case .LB: fallthrough
     case .LH: fallthrough
     case .LW:
-      dest, _ := operand_from_operands(operands[:], 0)
-      src, _ := operand_from_operands(operands[:], 1)
-      off, _ := operand_from_operands(operands[:], 2)
+      dest, _ := operand_from_token(operands[0])
+      src, _ := operand_from_token(operands[1])
+      off, _ := operand_from_token(operands[2])
 
       src_addr: Address
       if off != nil
@@ -520,9 +522,9 @@ main :: proc()
     case .SB: fallthrough
     case .SH: fallthrough
     case .SW:
-      src, _ := operand_from_operands(operands[:], 0)
-      dest, _ := operand_from_operands(operands[:], 1)
-      off, _ := operand_from_operands(operands[:], 2)
+      src, _ := operand_from_token(operands[0])
+      dest, _ := operand_from_token(operands[1])
+      off, _ := operand_from_token(operands[2])
 
       dest_address := cast(Address) off.(Number)
       switch v in dest

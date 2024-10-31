@@ -6,15 +6,18 @@
 .word WORD 0xCCCCCCCC
 
 .section .text
-            j   MAIN
+      j   MAIN
 
 
 // Add a0 to s1
-PROC:       add  s1, s1, a0
-            ret
+PROC:       
+      add  s1, s1, a0
+      ret
 
 
-MAIN:       li  a0, 3
-            jal PROC
-            lb  t0, BYTE[0]
-EXIT:       mv  s1, s1
+MAIN:
+      li  a0, 'A'
+      jal PROC
+      lb  t0, BYTE[0]
+EXIT: 
+      mv  s1, s1
