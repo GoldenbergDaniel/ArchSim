@@ -232,7 +232,8 @@ main :: proc()
       line := sim.lines[line_idx]
       if line.tokens[0].type == .DIRECTIVE
       {
-        should_store_memory: bool
+        should_store_number: bool
+        should_store_string: bool
         size_to_store: int
         
         switch line.tokens[0].data
@@ -241,25 +242,44 @@ main :: proc()
           val := cast(Number) str_to_int(line.tokens[2].data)
           sim.symbol_table[line.tokens[1].data] = val
         case ".byte":
-          should_store_memory = true
+          should_store_number = true
           size_to_store = 1
         case ".half":
-          should_store_memory = true
+          should_store_number = true
           size_to_store = 2
         case ".word":
-          should_store_memory = true
+          should_store_number = true
           size_to_store = 4
+        case ".ascii":
+          should_store_string = true
         }
 
-        if should_store_memory
+        if should_store_number
         {
-          val := cast(Number) str_to_int(line.tokens[2].data)
-          bytes := bytes_from_value(val, size_to_store, scratch.arena)
+          num := cast(Number) str_to_int(line.tokens[2].data)
+          bytes := bytes_from_value(num, size_to_store, scratch.arena)
           address := cast(Address) (BASE_ADDRESS + data_offset)
           memory_store_bytes(address, bytes)
 
           sim.symbol_table[line.tokens[1].data] = cast(Number) address
           data_offset += size_to_store
+        }
+        else if should_store_string
+        {
+          str := line.tokens[2].data
+          for i in 0..<len(str)
+          {
+            bytes := transmute([]byte) str[i:i+1]
+            address := cast(Address) (BASE_ADDRESS + data_offset)
+            memory_store_bytes(address, bytes)
+
+            if i == 0
+            {
+              sim.symbol_table[line.tokens[1].data] = cast(Number) address
+            }
+
+            data_offset += 1
+          }
         }
       }
 
@@ -379,13 +399,13 @@ main :: proc()
       
       switch v in op1_reg
       {
-      case Number:     val1 = v
+      case Number:      val1 = v
       case Register_ID: val1 = sim.registers[v]
       }
 
       switch v in op2_reg
       {
-      case Number:     val2 = v
+      case Number:      val2 = v
       case Register_ID: val2 = sim.registers[v]
       }
       
@@ -431,13 +451,13 @@ main :: proc()
 
       switch v in oper1
       {
-      case Number:     val1 = v
+      case Number:      val1 = v
       case Register_ID: val1 = sim.registers[v]
       }
 
       switch v in oper2
       {
-      case Number:     val2 = v
+      case Number:      val2 = v
       case Register_ID: val2 = sim.registers[v]
       }
 
@@ -508,7 +528,7 @@ main :: proc()
 
       switch v in src
       {
-      case Number:     src_addr += cast(Address) v
+      case Number:      src_addr += cast(Address) v
       case Register_ID: src_addr += cast(Address) sim.registers[v]
       }
 
@@ -545,8 +565,7 @@ main :: proc()
     tui_print_sim_result(instruction^, sim.next_instruction_idx)
     sim.program_counter = sim.next_instruction_idx
 
-    if !(sim.step_to_next && 
-         sim.program_counter < (sim.instruction_count - 1) * 4)
+    if !(sim.step_to_next && sim.program_counter < (sim.instruction_count - 1) * 4)
     {
       fmt.print("\n")
     }
@@ -589,12 +608,9 @@ address_from_line_index :: proc(idx: int) -> Address
   }
   else
   {
-    for i := 0; i < idx; i += 1
+    for i in 0..<idx do if line_is_instruction(sim.lines[i])
     {
-      if line_is_instruction(sim.lines[i])
-      {
-        result += INSTRUCTION_SIZE
-      }
+      result += INSTRUCTION_SIZE
     }
 
     line_idx_to_address_cache[idx] = result
@@ -649,11 +665,10 @@ memory_load_bytes :: proc(address: Address, size: uint) -> []byte
 memory_store_bytes :: proc(address: Address, bytes: []byte)
 {
   address := cast(int) address
-  size := len(bytes)
-  assert(address >= BASE_ADDRESS && address + size <= BASE_ADDRESS + 0xFFFF)
+  assert(address >= BASE_ADDRESS && address + len(bytes) <= BASE_ADDRESS + 0xFFFF)
   address -= BASE_ADDRESS
 
-  for i in address..<address+size
+  for i in address..<address+len(bytes)
   {
     sim.memory[i] = bytes[i - address]
   }

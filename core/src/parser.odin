@@ -26,6 +26,7 @@ Token_Type :: enum
   DIRECTIVE,
   NUMBER,
   CHARACTER,
+  STRING,
   COLON,
   EQUALS,
 }
@@ -182,6 +183,19 @@ tokenize_source_code :: proc(src_data: []byte)
           line.tokens[token_cnt] = Token{
             data=chr, 
             type=.CHARACTER
+          }
+
+          token_cnt += 1
+          continue tokenizer_loop
+        }
+
+        // --- Tokenize string ---------------
+        if tok_str[0] == '\"'
+        {
+          str := tok_str[1:len(tok_str)-1]
+          line.tokens[token_cnt] = Token{
+            data=str, 
+            type=.STRING
           }
 
           token_cnt += 1
@@ -747,7 +761,7 @@ next_line_from_bytes :: proc(buf: []byte, start: int) -> (end: int)
   end = start
   for i in start..<length
   {
-    if (buf[i] == '\n' || buf[i] == '\r')
+    if buf[i] == '\n' || buf[i] == '\r'
     {
       end = i
       break
@@ -783,10 +797,9 @@ print_tokens_at :: proc(idx: int)
   fmt.print("\n")
 }
 
-register_from_string :: proc(str: string) -> (Register_ID, bool)
+register_from_string :: proc(str: string) -> (result: Register_ID, ok: bool)
 {
-  result: Register_ID
-  ok := true
+  ok = true
 
   switch str
   {
@@ -844,11 +857,8 @@ opcode_pos_in_instruction :: proc(instruction: Line) -> int
   return result
 }
 
-operand_from_token :: proc(token: Token) -> (Operand, bool)
+operand_from_token :: proc(token: Token) -> (result: Operand, ok: bool)
 {
-  result: Operand
-  ok: bool
-
   #partial switch token.type
   {
   case .NUMBER:
