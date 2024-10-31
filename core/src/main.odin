@@ -15,7 +15,7 @@ MEMORY_SIZE      :: 65535
 INSTRUCTION_SIZE :: 4
 
 Address :: distinct u32
-Number  :: distinct i32
+Number  :: distinct i64
 
 Simulator :: struct
 {
@@ -187,6 +187,15 @@ main :: proc()
     context.allocator = mem.allocator(&sim.perm_arena)
   }
 
+  {
+    Data :: struct {}
+    Command :: union {int, string}
+    submit :: proc(d: ^Data, c: []Command) {}
+
+    data: Data
+    submit(&data, {1, "string"})
+  }
+
   tui_print_welcome()
 
   src_file_path := "asm/main.s"
@@ -244,25 +253,56 @@ main :: proc()
         case ".byte":
           should_store_number = true
           size_to_store = 1
-        case ".half":
+        case ".short", ".hword":
           should_store_number = true
           size_to_store = 2
         case ".word":
           should_store_number = true
           size_to_store = 4
+        case ".long", ".dword":
+          should_store_number = true
+          size_to_store = 8
         case ".ascii":
           should_store_string = true
         }
 
         if should_store_number
         {
-          num := cast(Number) str_to_int(line.tokens[2].data)
-          bytes := bytes_from_value(num, size_to_store, scratch.arena)
-          address := cast(Address) (BASE_ADDRESS + data_offset)
-          memory_store_bytes(address, bytes)
+          tokens: []Token
+          {
+            end: int = 2
+            for tok in line.tokens[2:]
+            {
+              if tok.type == .NIL do break
+              end += 1
+            }
 
-          sim.symbol_table[line.tokens[1].data] = cast(Number) address
-          data_offset += size_to_store
+            tokens = line.tokens[2:end]
+          }
+
+          for i in 0..<len(tokens)
+          {
+            num: Number
+            if tokens[i].type == .NUMBER
+            {
+              num = cast(Number) str_to_int(tokens[i].data)
+            }
+            else if tokens[i].type == .CHARACTER
+            {
+              num = cast(Number) str_to_byte(tokens[i].data) or_continue
+            }
+
+            bytes := bytes_from_value(num, size_to_store, scratch.arena)
+            address := cast(Address) (BASE_ADDRESS + data_offset)
+            memory_store_bytes(address, bytes)
+
+            if i == 0
+            {
+              sim.symbol_table[line.tokens[1].data] = cast(Number) address
+            }
+
+            data_offset += size_to_store
+          }
         }
         else if should_store_string
         {
@@ -639,10 +679,10 @@ arithmetic_shift_right :: proc(number: Number, shift: uint) -> Number
   for _ in 0..<shift
   {
     BIT_31 :: 1 << 31
-    if number & transmute(Number) u32(BIT_31) != 0
+    if number & transmute(Number) u64(BIT_31) != 0
     {
       number >>= 1
-      number |= transmute(Number) u32(BIT_31)
+      number |= transmute(Number) u64(BIT_31)
     }
     else
     {

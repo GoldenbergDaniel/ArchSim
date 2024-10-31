@@ -2,6 +2,7 @@ package mem0
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:mem"
 import "core:mem/virtual"
 
 Allocator       :: runtime.Allocator
@@ -38,6 +39,22 @@ zero :: #force_inline proc "contextless" (data: rawptr, len: int) -> rawptr
 {
 	intrinsics.mem_zero(data, len)
 	return data
+}
+
+compare :: proc
+{
+	compare_ptrs,
+	compare_slices,
+}
+
+compare_ptrs :: #force_inline proc(a, b: rawptr, n: int) -> int
+{
+	return mem.compare_ptrs(a, b, n)
+}
+
+compare_slices :: #force_inline proc(a, b: []byte) -> int
+{
+	return mem.compare(a, b)
 }
 
 allocator :: #force_inline proc "contextless" (arena: ^Arena) -> Allocator
