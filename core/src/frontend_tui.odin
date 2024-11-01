@@ -217,7 +217,9 @@ tui_prompt_command :: proc() -> bool
         offset = str_to_int(command.args[2])
       }
 
-      tui_print_memory_view(address + Address(offset), global_config.base)
+      padding := (address + Address(offset)) % 8
+      
+      tui_print_memory_view(address + Address(offset) - padding, global_config.base)
     }
     else if command.args[0] == "base" || command.args[0] == "mode"
     {
@@ -433,29 +435,26 @@ tui_print_register_view :: proc(which: bit_set[TUI_Register_Group], base: TUI_Ba
 
 tui_print_memory_view :: proc(address: Address, base: TUI_Base)
 {
-  for addr in address-3..=address+3 do if address_is_valid(addr)
-  {
-    if addr == address
-    {
-      term.color(.GREEN)
-      fmt.print(" > ")
-    }
-    else
-    {
-      fmt.print("   ")
-    }
+  address := cast(int) address
 
-    switch base
+  for i in 0..<4
+  {
+    fmt.printf("%X : ", address + (i * 8))
+
+    for addr, j in address+(i*8)..<address+((i+1)*8)
     {
-    case .BIN:
-      fmt.printf("%X : %b\n", addr, sim.memory[addr - BASE_ADDRESS])
-    case .DEC:
-      fmt.printf("%X : %i\n", addr, sim.memory[addr - BASE_ADDRESS])
-    case .HEX:
-      fmt.printf("%X : %X\n", addr, sim.memory[addr - BASE_ADDRESS])
+      if !address_is_valid(Address(addr)) do break
+      
+      if sim.memory[addr - BASE_ADDRESS] < 0x10
+      {
+        fmt.print("0")
+      }
+
+      fmt.printf("%X", sim.memory[addr - BASE_ADDRESS])
+      if j == 3 do fmt.print("  "); else do fmt.print(" ")
     }
     
-    term.color(.WHITE)
+    fmt.print("\n")
   }
 }
 

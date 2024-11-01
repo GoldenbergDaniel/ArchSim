@@ -268,35 +268,25 @@ main :: proc()
 
         if should_store_number
         {
-          tokens: []Token
+          for token, idx in line.tokens[2:]
           {
-            end: int = 2
-            for tok in line.tokens[2:]
-            {
-              if tok.type == .NIL do break
-              end += 1
-            }
+            if token.type == .NIL do break
 
-            tokens = line.tokens[2:end]
-          }
-
-          for i in 0..<len(tokens)
-          {
             num: Number
-            if tokens[i].type == .NUMBER
+            if token.type == .NUMBER
             {
-              num = cast(Number) str_to_int(tokens[i].data)
+              num = cast(Number) str_to_int(token.data)
             }
-            else if tokens[i].type == .CHARACTER
+            else if token.type == .CHARACTER
             {
-              num = cast(Number) str_to_byte(tokens[i].data) or_continue
+              num = cast(Number) str_to_byte(token.data) or_continue
             }
 
             bytes := bytes_from_value(num, size_to_store, scratch.arena)
             address := cast(Address) (BASE_ADDRESS + data_offset)
             memory_store_bytes(address, bytes)
 
-            if i == 0
+            if idx == 0
             {
               sim.symbol_table[line.tokens[1].data] = cast(Number) address
             }

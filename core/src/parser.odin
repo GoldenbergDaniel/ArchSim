@@ -873,8 +873,6 @@ operand_from_token :: proc(token: Token) -> (result: Operand, ok: bool)
     map_ok: bool
     result, map_ok = sim.symbol_table[token.data]
     ok = map_ok && ok
-  case:
-    panic("Not a token!")
   }
 
   return result, ok

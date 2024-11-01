@@ -2,9 +2,9 @@
 
 .section .data
 .byte BYTE 0xAA, 'B', 14
-.hword SHORT 0xBBBB
+.short SHORT 0xBBBB
 .word WORD 0xCCCCCCCC
-.dword LONG 0xDDDDDDDDDDDDDDDD
+.long LONG 0xDDDDDDDDDDDDDDDD
 .ascii STRING "hellope!"
 
 .section .text
