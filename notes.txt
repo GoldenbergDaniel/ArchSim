@@ -11,13 +11,13 @@ TODO
   [X] register view
   [X] program counter 
   [X] memory (load/store)
-  [~] memory view
+  [X] memory view
   [X] sra
   [_] org directive
-  [_] ascii strings
+  [X] ascii characters
+  [X] ascii strings
   [X] procedure calls
   [X] breakpoints
-  [_] disk storage (syscalls)
 
 BREAKPOINTS
   - to set:    break set 'X'
@@ -33,12 +33,6 @@ VIEW
 
 MEMORY
  - 0x'1000'0000 <-> 0x'1000'FFFF
-
-SYSCALLS
-  - open
-  - close
-  - read
-  - write
 
 # WEB ##################################################################################
 

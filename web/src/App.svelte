@@ -3,7 +3,7 @@
     <a href="https://riscv.org/" target="_blank" rel="noreferrer">
       <img src={riscvLogo} class="logo riscv" alt="Vite Logo"/>
     </a>
-    <h1>archsim</h1>
+    <h1>RISCBox</h1>
     <!-- <a href="https://webassembly.org/" target="_blank" rel="noreferrer">
       <img src={wasmLogo} class="logo wasm" alt="Svelte Logo"/>
     </a>
