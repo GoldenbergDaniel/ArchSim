@@ -4,7 +4,7 @@ import "core:math"
 
 str_is_dec :: proc(str: string) -> bool
 {
-  if len(str) == 0 do return false
+  if len(str) == 0                 do return false
   if len(str) > 1 && str[0] == '0' do return false
 
   is_negative: bool
@@ -29,9 +29,7 @@ str_is_hex :: proc(str: string) -> bool
 
   for c in str[2:]
   {
-    if (c < '0' || c > '9') && 
-       (c < 'a' || c > 'f') && 
-       (c < 'A' || c > 'F')
+    if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F')
     {
       return false
     }
@@ -57,9 +55,9 @@ str_get_number_base :: proc(str: string) -> int
 {
   result: int
 
-  if str_is_bin(str) do result = 2
-  if str_is_dec(str) do result = 10
-  if str_is_hex(str) do result = 16
+       if str_is_bin(str) do result = 2
+  else if str_is_dec(str) do result = 10
+  else if str_is_hex(str) do result = 16
 
   return result
 }
@@ -121,11 +119,8 @@ str_to_int :: proc(str: string) -> int
   return result
 }
 
-str_to_byte :: proc(str: string) -> (byte, bool)
+str_to_char :: proc(str: string) -> (result: byte, ok: bool)
 {
-  result: byte
-  ok: bool = true
-
   if len(str) == 1
   {
     result = str[0]
@@ -150,35 +145,18 @@ str_to_byte :: proc(str: string) -> (byte, bool)
   return result, ok
 }
 
-str_strip_crlf :: proc(str: string) -> string
+strip_crlf :: proc(str: string) -> string
 {
   result := str
-  str_len := len(str)
 
-  if str_len >= 2 && str[str_len-2] == '\r'
+  if len(str) >= 2 && str[len(str)-2] == '\r'
   {
     result = str[:len(str)-2]
   }
-  else if str_len >= 1 && str[str_len-1] == '\n'
+  else if len(str) >= 1 && str[len(str)-1] == '\n'
   {
     result = str[:len(str)-1]
   }
 
   return result
-}
-
-str_find_char :: proc(str: string, chr: byte, begin := 0) -> (loc: int)
-{
-  loc = -1
-
-  for i in begin..<len(str)
-  {
-    if str[i] == chr
-    {
-      loc = i
-      break
-    }
-  }
-
-  return loc
 }

@@ -1,9 +1,10 @@
 package main
 
 import "core:fmt"
+import "core:strings"
 import "core:os"
 
-import "term"
+import "src:term"
 
 TUI_Command :: struct
 {
@@ -74,7 +75,7 @@ tui_prompt_command :: proc() -> bool
 
   input_len, _ := os.read(os.stdin, buf[:])
   
-  cmd_str := str_strip_crlf(string(buf[:input_len]))
+  cmd_str := strip_crlf(string(buf[:input_len]))
   command := tui_command_from_string(cmd_str)
 
   if command.type != .QUIT
@@ -249,18 +250,24 @@ tui_prompt_command :: proc() -> bool
 tui_command_from_string :: proc(str: string) -> TUI_Command
 {
   result: TUI_Command
-  length := len(str)
 
-  if length == 0
+  if len(str) == 0
   {
     return TUI_Command{type=.STEP}
   }
 
   start, end: int
-  for i := 0; i <= len(result.args) && end < length; i += 1
+  for i := 0; i <= len(result.args) && end < len(str); i += 1
   {
-    end = str_find_char(str, ' ', start)
-    if end == -1 do end = length
+    end = strings.index_byte(str[start:], ' ')
+    if end == -1
+    {
+      end = len(str)
+    }
+    else
+    {
+      end += start
+    }
 
     substr := str[start:end]
     
@@ -341,9 +348,6 @@ tui_print_sim_result :: proc(instruction: Line, next_idx: int)
 
 tui_print_register_view :: proc(which: bit_set[TUI_Register_Group], base: TUI_Base)
 {
-  base := base
-  base = .DEC
-
   // --- Print temporaries ---------------
   if .TEMPORARIES in which
   {

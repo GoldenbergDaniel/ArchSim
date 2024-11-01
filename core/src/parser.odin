@@ -77,7 +77,7 @@ tokenize_source_code :: proc(src_data: []byte)
       }
     }
 
-    sim.lines[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE)
+    sim.lines[line_idx].tokens = make([]Token, MAX_TOKENS_PER_LINE, sim.perm_allocator)
     
     // --- Tokenize line ---------------
     {
@@ -864,7 +864,7 @@ operand_from_token :: proc(token: Token) -> (result: Operand, ok: bool)
   case .NUMBER:
     result = cast(Number) str_to_int(token.data)
   case .CHARACTER:
-    conv_b, conv_ok := str_to_byte(token.data)
+    conv_b, conv_ok := str_to_char(token.data)
     result = cast(Number) conv_b
     ok = conv_ok && ok
   case .REGISTER:
@@ -886,7 +886,7 @@ line_is_instruction :: proc(line: Line) -> bool
          (line.tokens[0].type == .LABEL && line.tokens[2].type == .OPCODE))
 }
 
-// @ParserError ////////////////////////////////////////////////////////////////
+// @ParserError /////////////////////////////////////////////////////////////////////
 
 Parser_Error :: union
 {

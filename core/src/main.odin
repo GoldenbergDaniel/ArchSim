@@ -35,6 +35,7 @@ Simulator :: struct
   memory: []byte,
 
   perm_arena: mem.Arena,
+  perm_allocator: mem.Allocator,
 }
 
 Opcode_Type :: enum
@@ -184,16 +185,7 @@ main :: proc()
   {
     err := mem.init_arena_static(&sim.perm_arena)
     assert(err == nil, "Failed to initialize perm arena!")
-    context.allocator = mem.allocator(&sim.perm_arena)
-  }
-
-  {
-    Data :: struct {}
-    Command :: union {int, string}
-    submit :: proc(d: ^Data, c: []Command) {}
-
-    data: Data
-    submit(&data, {1, "string"})
+    sim.perm_allocator = mem.allocator(&sim.perm_arena)
   }
 
   tui_print_welcome()
@@ -212,14 +204,14 @@ main :: proc()
     return
   }
 
-  src_buf: [MAX_SRC_BUF_BYTES]byte
+  src_buf := make([]byte, MAX_SRC_BUF_BYTES, sim.perm_allocator)
   src_size, _ := os.read(src_file, src_buf[:])
   src_data := src_buf[:src_size]
   os.close(src_file)
 
-  sim.lines = make([]Line, MAX_LINES)
-  sim.instructions = make([]^Line, MAX_LINES)
-  sim.memory = make([]byte, MEMORY_SIZE)
+  sim.lines = make([]Line, MAX_LINES, sim.perm_allocator)
+  sim.instructions = make([]^Line, MAX_LINES, sim.perm_allocator)
+  sim.memory = make([]byte, MEMORY_SIZE, sim.perm_allocator)
   sim.step_to_next = true
 
   // --- Tokenize ---------------
@@ -279,7 +271,7 @@ main :: proc()
             }
             else if token.type == .CHARACTER
             {
-              num = cast(Number) str_to_byte(token.data) or_continue
+              num = cast(Number) str_to_char(token.data) or_continue
             }
 
             bytes := bytes_from_value(num, size_to_store, scratch.arena)
@@ -721,7 +713,7 @@ value_from_bytes :: proc(bytes: []byte) -> Number
 
 bytes_from_value :: proc(value: Number, size: int, arena: ^mem.Arena) -> []byte
 {
-  result: []byte = make([]byte, size, mem.allocator(arena))
+  result := make([]byte, size, mem.allocator(arena))
 
   for i in 0..<size
   {
