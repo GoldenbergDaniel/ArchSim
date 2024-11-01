@@ -57,7 +57,7 @@ compare_slices :: #force_inline proc(a, b: []byte) -> int
 	return mem.compare(a, b)
 }
 
-allocator :: #force_inline proc "contextless" (arena: ^Arena) -> Allocator
+to_allocator :: #force_inline proc "contextless" (arena: ^Arena) -> Allocator
 {
 	return Allocator{
 		procedure = virtual.arena_allocator_proc,
@@ -89,7 +89,7 @@ init_arena_static :: proc(
 
 clear_arena :: #force_inline proc(arena: ^Arena)
 {
-	free_all(allocator(arena))
+	free_all(to_allocator(arena))
 }
 
 destroy_arena :: #force_inline proc(arena: ^Arena)
@@ -107,7 +107,7 @@ end_temp :: #force_inline proc(temp: Arena_Temp)
 	virtual.arena_temp_end(temp)
 }
 
-get_scratch :: proc(conflict: ^Arena = nil) -> ^Arena
+scratch :: proc(conflict: ^Arena = nil) -> ^Arena
 {
 	result := &scratches[0]
 
@@ -119,4 +119,14 @@ get_scratch :: proc(conflict: ^Arena = nil) -> ^Arena
 	}
 
 	return result
+}
+
+default_allocator :: #force_inline proc() -> Allocator
+{
+	return runtime.default_allocator()
+}
+
+panic_allocator :: #force_inline proc() -> Allocator
+{
+	return runtime.panic_allocator()
 }

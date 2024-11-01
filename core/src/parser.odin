@@ -40,7 +40,7 @@ Line :: struct
 
 tokenize_source_code :: proc(src_data: []byte)
 {
-  scratch := mem.begin_temp(mem.get_scratch())
+  scratch := mem.begin_temp(mem.scratch())
   defer mem.end_temp(scratch)
 
   line_start, line_end: int
@@ -149,7 +149,7 @@ tokenize_source_code :: proc(src_data: []byte)
 
         // --- Tokenize opcode ---------------
         { 
-          tok_str_lower := strings.to_lower(tok_str, mem.allocator(scratch.arena))
+          tok_str_lower := strings.to_lower(tok_str, mem.to_allocator(scratch.arena))
           op_type := opcode_table[tok_str_lower]
           if op_type != .NIL
           {

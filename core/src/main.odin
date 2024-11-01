@@ -115,79 +115,21 @@ Operand :: union
   Register_ID,
 }
 
-opcode_table: map[string]Opcode_Type = {
-  ""      = .NIL,
-
-  "nop"   = .NOP,
-
-  "mv"    = .MV,
-  "li"    = .LI,
-
-  "add"   = .ADD,
-  "addi"  = .ADDI,
-  "sub"   = .SUB,
-  "and"   = .AND,
-  "andi"  = .ANDI,
-  "or"    = .OR,
-  "ori"   = .ORI,
-  "xor"   = .XOR,
-  "xori"  = .XORI,
-  "not"   = .NOT,
-  "neg"   = .NEG,
-  "sll"   = .SLL,
-  "slli"  = .SLLI,
-  "srl"   = .SRL,
-  "srli"  = .SRLI,
-  "sra"   = .SRA,
-  "srai"  = .SRAI,
-  "slt"   = .SLT,
-  "slti"  = .SLTI,
-  "sltz"  = .SLTZ,
-  "sgt"   = .SGT,
-  "sgti"  = .SGTI,
-  "sgtz"  = .SGTZ,
-
-  "j"     = .J,
-  "jr"    = .JR,
-  "jal"   = .JAL,
-  "jalr"  = .JALR,
-  "ret"   = .RET,
-
-  "beq"   = .BEQ,
-  "bne"   = .BNE,
-  "blt"   = .BLT,
-  "bgt"   = .BGT,
-  "ble"   = .BLE,
-  "bge"   = .BGE,
-  "beqz"  = .BEQZ,
-  "bnez"  = .BNEZ,
-  "bltz"  = .BLTZ,
-  "bgtz"  = .BGTZ,
-  "blez"  = .BLEZ,
-  "bgez"  = .BGEZ,
-
-  "lb"    = .LB,
-  "lh"    = .LH,
-  "lw"    = .LW,
-  "sb"    = .SB,
-  "sh"    = .SH,
-  "sw"    = .SW,
-
-  "lui"   = .LUI,
-  "auipc" = .AUIPC,
-}
+opcode_table: map[string]Opcode_Type = make_opcode_table()
 
 sim: Simulator
 
 main :: proc()
 {
+  context.allocator = mem.panic_allocator()
+
   // --- Initialize permenant arena ---------------
   {
     err := mem.init_arena_static(&sim.perm_arena)
     assert(err == nil, "Failed to initialize perm arena!")
-    sim.perm_allocator = mem.allocator(&sim.perm_arena)
+    sim.perm_allocator = mem.to_allocator(&sim.perm_arena)
   }
-
+ 
   tui_print_welcome()
 
   src_file_path := "asm/main.s"
@@ -212,6 +154,7 @@ main :: proc()
   sim.lines = make([]Line, MAX_LINES, sim.perm_allocator)
   sim.instructions = make([]^Line, MAX_LINES, sim.perm_allocator)
   sim.memory = make([]byte, MEMORY_SIZE, sim.perm_allocator)
+  sim.symbol_table = make(map[string]Number, 16, mem.default_allocator())
   sim.step_to_next = true
 
   // --- Tokenize ---------------
@@ -221,7 +164,7 @@ main :: proc()
 
   // --- Preprocess ---------------
   {
-    scratch := mem.begin_temp(mem.get_scratch())
+    scratch := mem.begin_temp(mem.scratch())
     defer mem.end_temp(scratch)
 
     data_offset: int
@@ -329,7 +272,7 @@ main :: proc()
   // --- Execute ---------------
   for sim.program_counter < sim.instruction_count
   {
-    temp := mem.begin_temp(mem.get_scratch())
+    temp := mem.begin_temp(mem.scratch())
     defer mem.end_temp(temp)
 
     instruction := sim.instructions[sim.program_counter]
@@ -713,7 +656,7 @@ value_from_bytes :: proc(bytes: []byte) -> Number
 
 bytes_from_value :: proc(value: Number, size: int, arena: ^mem.Arena) -> []byte
 {
-  result := make([]byte, size, mem.allocator(arena))
+  result := make([]byte, size, mem.to_allocator(arena))
 
   for i in 0..<size
   {
@@ -721,4 +664,64 @@ bytes_from_value :: proc(value: Number, size: int, arena: ^mem.Arena) -> []byte
   }
 
   return result
+}
+
+@(private="file")
+make_opcode_table :: proc() -> map[string]Opcode_Type
+{
+  table := make(map[string]Opcode_Type, 64, sim.perm_allocator)
+  table[""] = .NIL
+  table["nop"] = .NOP
+  table["mv" ] = .MV
+  table["li" ] = .LI
+  table["add"] = .ADD
+  table["addi"]= .ADDI
+  table["sub"] = .SUB
+  table["and"] = .AND
+  table["andi"] = .ANDI
+  table["or" ] = .OR
+  table["ori"] = .ORI
+  table["xor"] = .XOR
+  table["xori"] = .XORI
+  table["not"] = .NOT
+  table["neg"] = .NEG
+  table["sll"] = .SLL
+  table["slli"]= .SLLI
+  table["srl"] = .SRL
+  table["srli"]= .SRLI
+  table["sra"] = .SRA
+  table["srai"]= .SRAI
+  table["slt"] = .SLT
+  table["slti"]= .SLTI
+  table["sltz"]= .SLTZ
+  table["sgt"] = .SGT
+  table["sgti"]= .SGTI
+  table["sgtz"]= .SGTZ
+  table["j"] = .J
+  table["jr"] = .JR
+  table["jal"] = .JAL
+  table["jalr"]= .JALR
+  table["ret"] = .RET
+  table["beq"] = .BEQ
+  table["bne"] = .BNE
+  table["blt"] = .BLT
+  table["bgt"] = .BGT
+  table["ble"] = .BLE
+  table["bge"] = .BGE
+  table["beqz"] = .BEQZ
+  table["bnez"] = .BNEZ
+  table["bltz"] = .BLTZ
+  table["bgtz"] = .BGTZ
+  table["blez"] = .BLEZ
+  table["bgez"] = .BGEZ
+  table["lb"] = .LB
+  table["lh"] = .LH
+  table["lw"] = .LW
+  table["sb"] = .SB
+  table["sh"] = .SH
+  table["sw"] = .SW
+  table["lui"] = .LUI
+  table["auipc"] = .AUIPC
+
+  return {}
 }

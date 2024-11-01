@@ -14,6 +14,8 @@
   "verbose": true,
   "checker_args": "-vet -vet-cast",
   "profile": "main",
+  "enable_inlay_hints": true,
+  "enable_inlay_hints_default_params": true,
   "profiles":
   [
     {"name": "main", "checker_path": ["core/src"]}

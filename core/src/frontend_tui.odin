@@ -45,21 +45,7 @@ TUI_Config :: struct
 }
 
 @(private="file")
-command_table: map[string]TUI_Command_Type = {
-  "q"        = .QUIT,
-  "quit"     = .QUIT,
-  "h"        = .HELP,
-  "help"     = .HELP,
-  "c"        = .CONTINUE,
-  "continue" = .CONTINUE,
-  ""         = .STEP,
-  "s"        = .STEP,
-  "step"     = .STEP,
-  "b"        = .BREAKPOINT,
-  "break"    = .BREAKPOINT,
-  "v"        = .VIEW,
-  "view"     = .VIEW,
-}
+command_table: map[string]TUI_Command_Type = make_command_table()
 
 @(private="file")
 global_config: TUI_Config = { base=.HEX }
@@ -505,4 +491,25 @@ tui_print_message :: proc(level: TUI_Message_Level, msg: string, args: ..any)
   }
   
   term.color(.WHITE)
+}
+
+@(private="file")
+make_command_table :: proc() -> map[string]TUI_Command_Type
+{
+  table := make(map[string]TUI_Command_Type, 16, sim.perm_allocator)
+  table["q"]        = .QUIT
+  table["quit"]     = .QUIT
+  table["h"]        = .HELP
+  table["help"]     = .HELP
+  table["c"]        = .CONTINUE
+  table["continue"] = .CONTINUE
+  table[""]         = .STEP
+  table["s"]        = .STEP
+  table["step"]     = .STEP
+  table["b"]        = .BREAKPOINT
+  table["break"]    = .BREAKPOINT
+  table["v"]        = .VIEW
+  table["view"]     = .VIEW
+
+  return table
 }
